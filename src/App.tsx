@@ -101,6 +101,14 @@ export default function App() {
 
   // --- Check Available Camera Devices ---
   useEffect(() => {
+    if (!window.isSecureContext) {
+      console.error('Insecure Context: HTTPS is required to access cameras on mobile browsers.');
+    }
+    if (!navigator.mediaDevices) {
+      console.error('navigator.mediaDevices is undefined. Check secure context (HTTPS) or browser support.');
+      return;
+    }
+
     async function checkCameras() {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -129,32 +137,63 @@ export default function App() {
         if (!active) return;
 
         setLoadingText('Loading Hand Landmarker Model...');
-        console.log('Initializing Hand Landmarker...');
-        const handLandmarker = await HandLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath:
-              'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
-            delegate: 'GPU',
-          },
-          runningMode: 'VIDEO',
-          numHands: 2,
-        });
+        let handLandmarker;
+        try {
+          console.log('Initializing Hand Landmarker (GPU)...');
+          handLandmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath:
+                'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+              delegate: 'GPU',
+            },
+            runningMode: 'VIDEO',
+            numHands: 2,
+          });
+        } catch (gpuError) {
+          console.warn('GPU delegate failed for Hand Landmarker, falling back to CPU...', gpuError);
+          if (!active) return;
+          handLandmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath:
+                'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+              delegate: 'CPU',
+            },
+            runningMode: 'VIDEO',
+            numHands: 2,
+          });
+        }
 
         if (!active) return;
         handLandmarkerRef.current = handLandmarker;
 
         setLoadingText('Loading Image Segmenter Model...');
-        console.log('Initializing Image Segmenter...');
-        const imageSegmenter = await ImageSegmenter.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath:
-              'https://storage.googleapis.com/mediapipe-assets/selfie_segmentation.tflite',
-            delegate: 'GPU',
-          },
-          runningMode: 'VIDEO',
-          outputCategoryMask: false,
-          outputConfidenceMasks: true,
-        });
+        let imageSegmenter;
+        try {
+          console.log('Initializing Image Segmenter (GPU)...');
+          imageSegmenter = await ImageSegmenter.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath:
+                'https://storage.googleapis.com/mediapipe-assets/selfie_segmentation.tflite',
+              delegate: 'GPU',
+            },
+            runningMode: 'VIDEO',
+            outputCategoryMask: false,
+            outputConfidenceMasks: true,
+          });
+        } catch (gpuError) {
+          console.warn('GPU delegate failed for Image Segmenter, falling back to CPU...', gpuError);
+          if (!active) return;
+          imageSegmenter = await ImageSegmenter.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath:
+                'https://storage.googleapis.com/mediapipe-assets/selfie_segmentation.tflite',
+              delegate: 'CPU',
+            },
+            runningMode: 'VIDEO',
+            outputCategoryMask: false,
+            outputConfidenceMasks: true,
+          });
+        }
 
         if (!active) return;
         imageSegmenterRef.current = imageSegmenter;
