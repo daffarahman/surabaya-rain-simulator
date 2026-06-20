@@ -102,6 +102,28 @@ html, body {
   font-family: var(--font-sans);
 }
 
+.loading-logs {
+  margin-top: 24px;
+  width: 80%;
+  max-width: 360px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-align: center;
+  color: var(--text);
+  opacity: 0.65;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.loading-log-item {
+  word-break: break-all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* UI Overlay Controls */
 .controls-overlay {
   position: absolute;

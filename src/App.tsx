@@ -667,6 +667,13 @@ export default function App() {
         <div className="loading-overlay">
           <div className="loader-spinner" />
           <div className="loader-text">{loadingText}</div>
+          <div className="loading-logs">
+            {consoleLogs.slice(-6).map((log) => (
+              <div key={log.id} className="loading-log-item">
+                &gt; {log.text}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
