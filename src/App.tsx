@@ -26,8 +26,7 @@ export default function App() {
   // --- State Management ---
   const [loadingText, setLoadingText] = useState('Initializing WASM Resolvers...');
   const [isLoading, setIsLoading] = useState(true);
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
-  const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
+  const facingMode = 'user';
   const [isRecording, setIsRecording] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
   const [replayModalOpen, setReplayModalOpen] = useState(false);
@@ -36,10 +35,10 @@ export default function App() {
   // --- Refs ---
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  
+
   const handLandmarkerRef = useRef<HandLandmarker | null>(null);
   const imageSegmenterRef = useRef<ImageSegmenter | null>(null);
-  
+
   // Pull string switch configurations
   const pullStringSwitchRef = useRef({
     stateOn: false,
@@ -57,7 +56,7 @@ export default function App() {
   const splashParticlesRef = useRef<SplashParticle[]>([]);
   const activeStreamRef = useRef<MediaStream | null>(null);
   const animationFrameIdRef = useRef<number | null>(null);
-  
+
   // Segmentation mask cache refs
   const segmentationMaskRef = useRef<Float32Array | null>(null);
   const segmentationWidthRef = useRef<number>(0);
@@ -99,28 +98,7 @@ export default function App() {
     };
   }, []);
 
-  // --- Check Available Camera Devices ---
-  useEffect(() => {
-    if (!window.isSecureContext) {
-      console.error('Insecure Context: HTTPS is required to access cameras on mobile browsers.');
-    }
-    if (!navigator.mediaDevices) {
-      console.error('navigator.mediaDevices is undefined. Check secure context (HTTPS) or browser support.');
-      return;
-    }
 
-    async function checkCameras() {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter((d) => d.kind === 'videoinput');
-        setHasMultipleCameras(videoDevices.length > 1);
-        console.log(`Found ${videoDevices.length} video input device(s)`);
-      } catch (err) {
-        console.warn('Error enumerating cameras:', err);
-      }
-    }
-    checkCameras();
-  }, []);
 
   // --- MediaPipe Models Loader ---
   useEffect(() => {
@@ -411,15 +389,15 @@ export default function App() {
 
         // Spawn Water Particles
         if (pullString.stateOn) {
-          // Spawn rate: 2-3 drops per frame
-          const spawnCount = Math.floor(Math.random() * 2) + 2;
+          // Spawn rate: increased by 25% (average 3.125 drops per frame)
+          const spawnCount = Math.random() < 0.875 ? 3 : 4;
           for (let i = 0; i < spawnCount; i++) {
             particlesRef.current.push({
-              x: canvasWidth / 2 + (Math.random() - 0.5) * 220,
+              x: Math.random() * canvasWidth,
               y: 0,
               vx: (Math.random() - 0.5) * 1.2,
               vy: Math.random() * 2 + 5,
-              size: Math.random() * 1.5 + 1.2,
+              size: Math.random() * 2.5 + 2.5,
               opacity: Math.random() * 0.4 + 0.5,
             });
           }
@@ -521,11 +499,11 @@ export default function App() {
           if (alive) {
             nextParticles.push(p);
 
-            // Draw droplet path (rain streak)
+            // Draw rectangle rain particle (slanted streak)
             ctx.beginPath();
             ctx.moveTo(p.x - p.vx * 1.2, p.y - p.vy * 1.2);
             ctx.lineTo(p.x, p.y);
-            ctx.strokeStyle = `rgba(26, 26, 36, ${p.opacity * 0.4})`; // Minimal monochrome dark streaks
+            ctx.strokeStyle = `rgba(255, 255, 255, ${p.opacity * 0.8})`;
             ctx.lineWidth = p.size;
             ctx.stroke();
           }
@@ -548,7 +526,7 @@ export default function App() {
             // Draw splash dots
             ctx.beginPath();
             ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(26, 26, 36, ${(sp.life / 16) * 0.5})`;
+            ctx.fillStyle = `rgba(255, 255, 255, ${(sp.life / 16) * 0.7})`;
             ctx.fill();
           }
         }
@@ -558,38 +536,62 @@ export default function App() {
         // Draw Pull String Switch
         ctx.save();
         const switchX = canvasWidth - 50;
+        const rectW = 54;
+        const rectH = 22;
+        const rectX = switchX - rectW / 2;
+        const rectY = pullString.handleY - rectH / 2;
+        const radius = 6;
 
-        // Draw the vertical string line
+        // Draw the vertical string line with wiggle effect based on velocity and time
         ctx.beginPath();
+        const segments = 15;
         ctx.moveTo(switchX, 0);
-        ctx.lineTo(switchX, pullString.handleY - 12);
-        ctx.strokeStyle = '#1a1a24';
+        for (let i = 1; i <= segments; i++) {
+          const t = i / segments;
+          const currY = rectY * t;
+          const envelope = Math.sin(Math.PI * t);
+          const timePhase = timestamp ? (timestamp * 0.02) : 0;
+          // Wiggle amplitude scales with velocity, plus a tiny idle/dragging breeze effect
+          const wiggle = (pullString.vy * 0.4 + (pullString.isGrabbing ? 0.2 : 0.01)) * envelope * Math.sin(t * Math.PI * 3 + timePhase);
+          ctx.lineTo(switchX + wiggle, currY);
+        }
+        ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // Draw the handle knob circle
+        // Draw the handle knob as a rounded rectangle with white outline and transparent/white fill
         ctx.beginPath();
-        ctx.arc(switchX, pullString.handleY, 12, 0, Math.PI * 2);
-        ctx.fillStyle = pullString.stateOn ? '#1a1a24' : '#ffffff';
-        ctx.fill();
+        if (typeof ctx.roundRect === 'function') {
+          ctx.roundRect(rectX, rectY, rectW, rectH, radius);
+        } else {
+          ctx.moveTo(rectX + radius, rectY);
+          ctx.lineTo(rectX + rectW - radius, rectY);
+          ctx.quadraticCurveTo(rectX + rectW, rectY, rectX + rectW, rectY + radius);
+          ctx.lineTo(rectX + rectW, rectY + rectH - radius);
+          ctx.quadraticCurveTo(rectX + rectW, rectY + rectH, rectX + rectW - radius, rectY + rectH);
+          ctx.lineTo(rectX + radius, rectY + rectH);
+          ctx.quadraticCurveTo(rectX, rectY + rectH, rectX, rectY + rectH - radius);
+          ctx.lineTo(rectX, rectY + radius);
+          ctx.quadraticCurveTo(rectX, rectY, rectX + radius, rectY);
+          ctx.closePath();
+        }
+        if (pullString.isGrabbing) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+        }
+        ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1.8;
-        ctx.strokeStyle = '#1a1a24';
         ctx.stroke();
 
-        // Draw handle inner indicator
-        ctx.beginPath();
-        ctx.arc(switchX, pullString.handleY, 4, 0, Math.PI * 2);
-        ctx.fillStyle = pullString.stateOn ? '#ffffff' : '#1a1a24';
-        ctx.fill();
-
-        // Label state next to handle
+        // Draw state label inside the rounded rectangle
         ctx.font = "bold 9px 'JetBrains Mono', monospace";
-        ctx.fillStyle = '#1a1a24';
-        ctx.textAlign = 'right';
+        ctx.fillStyle = pullString.isGrabbing ? '#1a1a24' : '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         ctx.fillText(
-          pullString.stateOn ? 'RAIN ON' : 'RAIN OFF',
-          switchX - 20,
-          pullString.handleY + 3
+          pullString.stateOn ? 'ON' : 'OFF',
+          switchX,
+          pullString.handleY + 1
         );
         ctx.restore();
 
@@ -685,10 +687,7 @@ export default function App() {
     };
   }, [toggleRecording]);
 
-  // --- Camera Toggle switch ---
-  const handleCameraToggle = () => {
-    setFacingMode((prev) => (prev === 'user' ? 'environment' : 'user'));
-  };
+
 
   // --- Cleanup on unmount ---
   useEffect(() => {
@@ -728,21 +727,11 @@ export default function App() {
         className="raw-video"
       />
 
-      {/* Instructions Tip */}
-      <div className="instructions-tip">
-        [S] Toggle Rain Switch<br />
-        [R] Toggle Recording<br />
-        {facingMode === 'user' ? 'Front Camera (Mirrored)' : 'Back Camera'}
-      </div>
+
 
       {/* UI Overlay Controls */}
       {!isLoading && (
         <div className="controls-overlay">
-          {hasMultipleCameras && (
-            <button className="btn-minimal" onClick={handleCameraToggle}>
-              CAMERA
-            </button>
-          )}
           <button
             className={`btn-minimal ${isRecording ? 'recording' : ''}`}
             onClick={toggleRecording}
