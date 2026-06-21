@@ -23,12 +23,12 @@ export class CanvasRecorder {
     
     // Supported formats check sequentially
     const types = [
-      'video/webm;codecs=vp9',
-      'video/webm;codecs=vp8',
-      'video/webm',
       'video/mp4;codecs=h264',
       'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
       'video/mp4',
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm',
       'video/quicktime'
     ];
 

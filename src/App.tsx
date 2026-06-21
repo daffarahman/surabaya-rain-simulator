@@ -87,6 +87,7 @@ export default function App() {
   const facingMode = 'user';
   const [isRecording, setIsRecording] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [replayModalOpen, setReplayModalOpen] = useState(false);
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLogMessage[]>([]);
   const currentMode = 'simulator';
@@ -1251,21 +1252,14 @@ export default function App() {
       if (canvasRecorderRef.current) {
         try {
           isRecordingRef.current = false;
-          const { url, extension } = await canvasRecorderRef.current.stop();
+          const { blob, url } = await canvasRecorderRef.current.stop();
           setIsRecording(false);
 
-          // Auto-download trigger
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = `surabaya-rain-${Date.now()}.${extension}`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-
           // Launch review modal
+          setRecordedBlob(blob);
           setRecordingUrl(url);
           setReplayModalOpen(true);
-          console.log(`Recording downloaded on reset: surabaya-rain-${Date.now()}.${extension}`);
+          console.log('Recording stopped on reset. Preview ready.');
         } catch (err) {
           console.error('Failed to stop recording on reset:', err);
           setIsRecording(false);
@@ -1285,21 +1279,14 @@ export default function App() {
       if (canvasRecorderRef.current) {
         try {
           isRecordingRef.current = false;
-          const { url, extension } = await canvasRecorderRef.current.stop();
+          const { blob, url } = await canvasRecorderRef.current.stop();
           setIsRecording(false);
 
-          // Auto-download trigger
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = `surabaya-rain-${Date.now()}.${extension}`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-
           // Launch review modal
+          setRecordedBlob(blob);
           setRecordingUrl(url);
           setReplayModalOpen(true);
-          console.log(`Recording downloaded: surabaya-rain-${Date.now()}.${extension}`);
+          console.log('Recording stopped. Preview ready.');
         } catch (err) {
           console.error('Failed to stop recording:', err);
           setIsRecording(false);
@@ -1320,6 +1307,25 @@ export default function App() {
       }
     }
   }, []);
+
+  const downloadRecording = useCallback((format: 'mp4' | 'webm') => {
+    if (!recordedBlob) return;
+
+    const downloadBlob = new Blob([recordedBlob], {
+      type: format === 'mp4' ? 'video/mp4' : 'video/webm'
+    });
+    const url = URL.createObjectURL(downloadBlob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `surabaya-rain-${Date.now()}.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+    console.log(`Recording downloaded manually as ${format.toUpperCase()}`);
+  }, [recordedBlob]);
 
   // --- Keyboard Event Handlers ---
   useEffect(() => {
@@ -1638,10 +1644,23 @@ export default function App() {
             />
             <div className="modal-actions">
               <button
+                className="btn-download-mp4"
+                onClick={() => downloadRecording('mp4')}
+              >
+                Save as MP4
+              </button>
+              <button
+                className="btn-download-webm"
+                onClick={() => downloadRecording('webm')}
+              >
+                Save as WebM
+              </button>
+              <button
                 className="btn-minimal"
                 onClick={() => {
                   setReplayModalOpen(false);
                   setRecordingUrl(null);
+                  setRecordedBlob(null);
                 }}
               >
                 CLOSE
