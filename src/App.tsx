@@ -642,7 +642,7 @@ export default function App() {
 
         ctx.save();
         // Setup glowing blue effect for particles
-        ctx.shadowColor = 'rgba(0, 191, 255, 0.8)';
+        ctx.shadowColor = 'rgba(146, 200, 248, 0.8)';
         ctx.shadowBlur = 8;
         for (const p of currentParticles) {
           p.x += p.vx;
@@ -771,7 +771,7 @@ export default function App() {
             ctx.beginPath();
             ctx.moveTo(p.x - p.vx * 1.8, p.y - p.vy * 1.8);
             ctx.lineTo(p.x, p.y);
-            ctx.strokeStyle = `rgba(0, 191, 255, ${p.opacity * 0.95})`;
+            ctx.strokeStyle = `rgba(146, 200, 248, ${p.opacity * 0.95})`;
             ctx.lineWidth = p.size;
             ctx.stroke();
           }
@@ -799,7 +799,7 @@ export default function App() {
             // Draw splash dots
             ctx.beginPath();
             ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(0, 191, 255, ${(sp.life / 16) * 0.8})`;
+            ctx.fillStyle = `rgba(146, 200, 248, ${(sp.life / 16) * 0.8})`;
             ctx.fill();
           }
         }
@@ -821,7 +821,7 @@ export default function App() {
           }
           ctx.lineTo(canvasWidth, canvasHeight);
           ctx.closePath();
-          ctx.fillStyle = 'rgba(30, 144, 255, 0.35)';
+          ctx.fillStyle = 'rgba(146, 200, 248, 0.35)';
           ctx.fill();
 
           // 3. Draw floating items bobbing and riding the waves
