@@ -30,6 +30,25 @@ interface FloatingItem {
   rotationOffset: number;
 }
 
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let currentLine = words[0] || '';
+
+  for (let i = 1; i < words.length; i++) {
+    const word = words[i];
+    const width = ctx.measureText(currentLine + " " + word).width;
+    if (width < maxWidth) {
+      currentLine += " " + word;
+    } else {
+      lines.push(currentLine);
+      currentLine = word;
+    }
+  }
+  lines.push(currentLine);
+  return lines;
+}
+
 const tipsData = [
   {
     image: '/img/tips/reusable_tumbler_bag.png',
@@ -112,6 +131,8 @@ export default function App() {
 
   // Preloaded trash images
   const trashImagesRef = useRef<HTMLImageElement[]>([]);
+  // Preloaded tip images for canvas recorder
+  const tipImagesRef = useRef<HTMLImageElement[]>([]);
 
   // Floating items specifications (increased quantity and sizes)
   const floatingItemsRef = useRef<FloatingItem[]>([
@@ -147,6 +168,17 @@ export default function App() {
       };
     });
     trashImagesRef.current = loadedImages;
+
+    const loadedTipImages: HTMLImageElement[] = [];
+    tipsData.forEach((tip, idx) => {
+      const img = new Image();
+      img.src = tip.image;
+      img.onload = () => {
+        loadedTipImages[idx] = img;
+        console.log(`Tip image ${tip.image} loaded successfully`);
+      };
+    });
+    tipImagesRef.current = loadedTipImages;
   }, []);
 
   useEffect(() => {
@@ -162,6 +194,16 @@ export default function App() {
       setActiveTipIndex(0);
     }
   }, [simState]);
+
+  const activeTipIndexRef = useRef<number>(0);
+  useEffect(() => {
+    activeTipIndexRef.current = activeTipIndex;
+  }, [activeTipIndex]);
+
+  const isRecordingRef = useRef<boolean>(false);
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
 
   // --- Dynamic Console Logging Hook ---
   useEffect(() => {
@@ -495,11 +537,15 @@ export default function App() {
                 pullString.stateOn = !pullString.stateOn;
                 console.log(`Switch pulled. Rain state: ${pullString.stateOn ? 'ON' : 'OFF'}`);
               } else if (currentModeVal === 'simulator') {
-                setSimState((prev) => {
-                  const next = (prev + 1) % 9;
-                  console.log(`Simulator Stage Advanced: ${prev} -> ${next}`);
-                  return next;
-                });
+                if (simStateVal === 8) {
+                  handleReset();
+                } else {
+                  setSimState((prev) => {
+                    const next = (prev + 1) % 9;
+                    console.log(`Simulator Stage Advanced: ${prev} -> ${next}`);
+                    return next;
+                  });
+                }
               }
             }
           } else if (pullString.handleY - pullString.restY < 55) {
@@ -878,6 +924,272 @@ export default function App() {
           ctx.restore();
         }
 
+        // Draw overlays on canvas if recording is active so they are captured in the video
+        if (isRecordingRef.current) {
+          const isMobile = canvasWidth < 600;
+
+          // 1. Draw brand overlay title (bottom-left)
+          ctx.save();
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+          ctx.shadowBlur = 8;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 2;
+          ctx.fillStyle = '#ffffff';
+          const brandSize = isMobile ? 11 : 14;
+          ctx.font = `700 ${brandSize}px 'Montserrat', sans-serif`;
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText('🌧️ Surabaya Rain Simulator 🌧️', isMobile ? 16 : 24, canvasHeight - 24);
+          ctx.restore();
+
+          // 2. Draw rain intensity overlay (bottom-right)
+          if (currentModeVal === 'simulator') {
+            ctx.save();
+            const percentageText = `🌧️ ${simStateVal === 0 ? '0%' :
+                                      simStateVal === 1 ? '15%' :
+                                      simStateVal === 2 ? '30%' :
+                                      simStateVal === 3 ? '50%' :
+                                      simStateVal === 4 ? '65%' :
+                                      simStateVal === 5 ? '80%' :
+                                      simStateVal === 6 ? '95%' :
+                                      simStateVal === 7 ? '100%' : '0%'}`;
+            const pctSize = isMobile ? 24 : 32;
+            ctx.font = `800 ${pctSize}px 'Montserrat', sans-serif`;
+            
+            const padX = isMobile ? 12 : 16;
+            const padY = isMobile ? 6 : 8;
+            const pctMetrics = ctx.measureText(percentageText);
+            const pctTextW = pctMetrics.width;
+            const pctRectW = pctTextW + padX * 2;
+            const pctRectH = pctSize + padY * 2;
+            const pctRectX = canvasWidth - (isMobile ? 16 : 24) - pctRectW;
+            const pctRectY = canvasHeight - 24 - pctRectH;
+
+            ctx.beginPath();
+            ctx.roundRect(pctRectX, pctRectY, pctRectW, pctRectH, 16);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+            ctx.fill();
+
+            ctx.fillStyle = '#1a1a24';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(percentageText, pctRectX + pctRectW / 2, pctRectY + pctRectH / 2);
+            ctx.restore();
+          }
+
+          // 3. Draw docked info box stay (top-left)
+          if (currentModeVal === 'simulator' && (simStateVal === 2 || simStateVal === 4 || simStateVal === 6)) {
+            ctx.save();
+            const stayX = isMobile ? 16 : 24;
+            const stayY = 64;
+            const stayW = isMobile ? (canvasWidth - 32) : 360;
+            const stayPad = isMobile ? 16 : 22;
+
+            let bgColor = '';
+            let shadowColor = '';
+            let titleColor = '';
+            let titleText = '';
+            let subtitleText = '';
+            let bodyLinesRaw: string[] = [];
+
+            if (simStateVal === 2) {
+              bgColor = 'rgba(255, 250, 215, 0.96)';
+              shadowColor = 'rgba(234, 179, 8, 0.45)';
+              titleColor = '#b45309';
+              titleText = '☁️ Curah Hujan Ringan';
+              subtitleText = 'ITS Area – Kondisi Aman';
+              bodyLinesRaw = [
+                'Gerimis tipis khas Surabaya Timur.',
+                'Air masih tertampung normal oleh drainase ITS–Keputih.',
+                'Risiko genangan sangat rendah, aktivitas tetap lancar.'
+              ];
+            } else if (simStateVal === 4) {
+              bgColor = 'rgba(255, 240, 222, 0.96)';
+              shadowColor = 'rgba(249, 115, 22, 0.45)';
+              titleColor = '#c2410c';
+              titleText = '🌧️ Curah Hujan Sedang';
+              subtitleText = 'Waspada Genangan Lokal';
+              bodyLinesRaw = [
+                'Hujan mulai stabil dan lebih lama turun.',
+                'Beberapa titik rendah di sekitar Keputih–Sukolilo bisa tergenang sementara.',
+                'Drainase mulai bekerja lebih berat, perlu kewaspadaan.'
+              ];
+            } else if (simStateVal === 6) {
+              bgColor = 'rgba(246, 235, 255, 0.96)';
+              shadowColor = 'rgba(168, 85, 247, 0.45)';
+              titleColor = '#7e22ce';
+              titleText = '⛈️ Curah Hujan Deras';
+              subtitleText = 'Zona Rawan Genangan ITS & Sekitar';
+              bodyLinesRaw = [
+                'Hujan lebat dalam durasi panjang.',
+                'Area Surabaya Timur seperti Keputih, Mulyorejo, dan sekitar ITS berpotensi banjir lokal.',
+                'Air bisa naik cepat karena kapasitas saluran terbatas dan aliran tersumbat di beberapa titik.'
+              ];
+            }
+
+            const titleSize = 13;
+            const subtitleSize = 11;
+            const bodySize = 11.5;
+            const titleLineH = 18;
+            const subtitleLineH = 16;
+            const bodyLineH = 18.4;
+
+            ctx.font = `bold ${titleSize}px 'Montserrat', sans-serif`;
+            const titleLines = wrapText(ctx, titleText, stayW - stayPad * 2);
+
+            ctx.font = `600 ${subtitleSize}px 'Montserrat', sans-serif`;
+            const subtitleLines = wrapText(ctx, subtitleText, stayW - stayPad * 2);
+            
+            ctx.font = `${bodySize}px 'Montserrat', sans-serif`;
+            const allBodyLines: { text: string; isFirst: boolean }[] = [];
+            for (const rawLine of bodyLinesRaw) {
+              // Indent the wrapped text width by 14px to accommodate bullet point
+              const wrapped = wrapText(ctx, rawLine, stayW - stayPad * 2 - 14);
+              wrapped.forEach((line, idx) => {
+                allBodyLines.push({ text: line, isFirst: idx === 0 });
+              });
+            }
+
+            const titleH = titleLines.length * titleLineH;
+            const subtitleH = subtitleLines.length * subtitleLineH;
+            const bodyH = allBodyLines.length * bodyLineH;
+            const gap = 8;
+            const stayH = stayPad * 2 + titleH + gap + subtitleH + gap + bodyH;
+
+            ctx.shadowColor = shadowColor;
+            ctx.shadowBlur = 48;
+            ctx.fillStyle = bgColor;
+            ctx.beginPath();
+            ctx.roundRect(stayX, stayY, stayW, stayH, 20);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            ctx.fillStyle = titleColor;
+            ctx.font = `bold ${titleSize}px 'Montserrat', sans-serif`;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            let currY = stayY + stayPad;
+            for (const line of titleLines) {
+              ctx.fillText(line, stayX + stayPad, currY);
+              currY += titleLineH;
+            }
+
+            ctx.fillStyle = titleColor;
+            ctx.font = `600 ${subtitleSize}px 'Montserrat', sans-serif`;
+            currY += 2;
+            for (const line of subtitleLines) {
+              ctx.fillText(line, stayX + stayPad, currY);
+              currY += subtitleLineH;
+            }
+
+            ctx.fillStyle = '#1a1a24';
+            ctx.font = `${bodySize}px 'Montserrat', sans-serif`;
+            currY += gap;
+            for (const line of allBodyLines) {
+              if (line.isFirst) {
+                ctx.save();
+                ctx.fillStyle = titleColor; // Match color tone
+                ctx.beginPath();
+                ctx.arc(stayX + stayPad + 3, currY + bodyLineH / 2 - 1, 2.5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+              }
+              // Draw indented text
+              ctx.fillText(line.text, stayX + stayPad + 14, currY);
+              currY += bodyLineH;
+            }
+            ctx.restore();
+          }
+
+          // 4. Draw Stage 8 popup carousel modal (center)
+          if (currentModeVal === 'simulator' && simStateVal === 8) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(26, 26, 36, 0.35)';
+            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+            const cardW = isMobile ? (canvasWidth - 32) : 400;
+            const cardH = 300;
+            const cardX = (canvasWidth - cardW) / 2;
+            const cardY = (canvasHeight - cardH) / 2;
+            ctx.beginPath();
+            ctx.roundRect(cardX, cardY, cardW, cardH, 24);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+
+            ctx.fillStyle = '#1a1a24';
+            ctx.font = "bold 13px 'Montserrat', sans-serif";
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText('Cegah Banjir dari Kebiasaan Sehari-hari', canvasWidth / 2, cardY + 24);
+
+            const img = tipImagesRef.current[activeTipIndexRef.current];
+            const imgSize = 80;
+            const imgX = (canvasWidth - imgSize) / 2;
+            const imgY = cardY + 54;
+            if (img && img.complete) {
+              ctx.drawImage(img, imgX, imgY, imgSize, imgSize);
+            }
+
+            ctx.fillStyle = '#1a1a24';
+            ctx.font = "600 11px 'Montserrat', sans-serif";
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            const tipText = tipsData[activeTipIndexRef.current]?.text || '';
+            const tipTextLines = wrapText(ctx, tipText, cardW - 80);
+            let currY = imgY + imgSize + 16;
+            for (const line of tipTextLines) {
+              ctx.fillText(line, canvasWidth / 2, currY);
+              currY += 16;
+            }
+
+            // Draw "Paham" button if last slide
+            if (activeTipIndexRef.current === tipsData.length - 1) {
+              ctx.save();
+              ctx.fillStyle = 'rgba(26, 26, 36, 0.5)';
+              ctx.font = "500 9px 'Montserrat', sans-serif";
+              ctx.fillText('Klik Paham untuk reset simulator', canvasWidth / 2, currY + 6);
+
+              const btnW = 100;
+              const btnH = 32;
+              const btnX = (canvasWidth - btnW) / 2;
+              const btnY = cardY + 222;
+
+              ctx.beginPath();
+              ctx.roundRect(btnX, btnY, btnW, btnH, 8);
+              ctx.fillStyle = '#1a1a24';
+              ctx.fill();
+
+              ctx.fillStyle = '#ffffff';
+              ctx.font = "bold 11px 'Montserrat', sans-serif";
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText('Paham', canvasWidth / 2, btnY + btnH / 2);
+              ctx.restore();
+            }
+
+            ctx.font = "bold 18px 'Montserrat', sans-serif";
+            ctx.fillStyle = activeTipIndexRef.current === 0 ? 'rgba(26, 26, 36, 0.25)' : '#1a1a24';
+            ctx.fillText('‹', cardX + 24, cardY + cardH / 2);
+
+            ctx.fillStyle = activeTipIndexRef.current === tipsData.length - 1 ? 'rgba(26, 26, 36, 0.25)' : '#1a1a24';
+            ctx.fillText('›', cardX + cardW - 24, cardY + cardH / 2);
+
+            const dotRadius = 3;
+            const dotGap = 8;
+            const dotsTotalW = (tipsData.length - 1) * dotGap;
+            const startDotX = (canvasWidth - dotsTotalW) / 2;
+            const dotY = cardY + cardH - 24;
+
+            for (let i = 0; i < tipsData.length; i++) {
+              ctx.beginPath();
+              ctx.arc(startDotX + i * dotGap, dotY, dotRadius, 0, Math.PI * 2);
+              ctx.fillStyle = activeTipIndexRef.current === i ? '#1a1a24' : '#e5e5e7';
+              ctx.fill();
+            }
+            ctx.restore();
+          }
+        }
+
 
       }
 
@@ -894,7 +1206,7 @@ export default function App() {
         cancelAnimationFrame(animationFrameIdRef.current);
       }
     };
-  }, [isLoading, facingMode, isRecording]);
+  }, [isLoading, facingMode]);
 
   const handleCarouselScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const container = e.currentTarget;
@@ -928,16 +1240,51 @@ export default function App() {
     }
   }, [activeTipIndex]);
 
+  // --- Reset controls ---
+  const handleReset = useCallback(async () => {
+    console.log('Resetting simulation state to 0');
+    setSimState(0);
+    setActiveTipIndex(0);
+
+    if (isRecordingRef.current) {
+      console.log('Stopping recording on simulator reset...');
+      if (canvasRecorderRef.current) {
+        try {
+          isRecordingRef.current = false;
+          const { url, extension } = await canvasRecorderRef.current.stop();
+          setIsRecording(false);
+
+          // Auto-download trigger
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `surabaya-rain-${Date.now()}.${extension}`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+
+          // Launch review modal
+          setRecordingUrl(url);
+          setReplayModalOpen(true);
+          console.log(`Recording downloaded on reset: surabaya-rain-${Date.now()}.${extension}`);
+        } catch (err) {
+          console.error('Failed to stop recording on reset:', err);
+          setIsRecording(false);
+        }
+      }
+    }
+  }, []);
+
   // --- Recording controls ---
   const toggleRecording = useCallback(async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    if (isRecording) {
+    if (isRecordingRef.current) {
       // Stop Recording
       console.log('Stopping recording...');
       if (canvasRecorderRef.current) {
         try {
+          isRecordingRef.current = false;
           const { url, extension } = await canvasRecorderRef.current.stop();
           setIsRecording(false);
 
@@ -964,6 +1311,7 @@ export default function App() {
       try {
         const recorder = new CanvasRecorder(canvas, 30);
         canvasRecorderRef.current = recorder;
+        isRecordingRef.current = true;
         recorder.start();
         setIsRecording(true);
         console.log('Recording started.');
@@ -971,7 +1319,7 @@ export default function App() {
         console.error('Failed to start recording:', err);
       }
     }
-  }, [isRecording]);
+  }, []);
 
   // --- Keyboard Event Handlers ---
   useEffect(() => {
@@ -988,11 +1336,15 @@ export default function App() {
           pullString.stateOn = !pullString.stateOn;
           console.log(`Keyboard toggle! Rain state: ${pullString.stateOn ? 'ON' : 'OFF'}`);
         } else if (mode === 'simulator') {
-          setSimState((prev) => {
-            const next = (prev + 1) % 9;
-            console.log(`Keyboard Simulator Stage Advanced: ${prev} -> ${next}`);
-            return next;
-          });
+          if (simStateRef.current === 8) {
+            handleReset();
+          } else {
+            setSimState((prev) => {
+              const next = (prev + 1) % 9;
+              console.log(`Keyboard Simulator Stage Advanced: ${prev} -> ${next}`);
+              return next;
+            });
+          }
         }
       } else if (key === 'R') {
         toggleRecording();
@@ -1003,7 +1355,7 @@ export default function App() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [toggleRecording]);
+  }, [toggleRecording, handleReset]);
 
 
 
@@ -1015,6 +1367,62 @@ export default function App() {
       }
     };
   }, []);
+
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isRecordingRef.current) return;
+    if (simState !== 8) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    // Scale client coordinates to canvas internal pixel dimensions
+    const x = ((e.clientX - rect.left) / rect.width) * canvas.width;
+    const y = ((e.clientY - rect.top) / rect.height) * canvas.height;
+
+    const isMobile = canvas.width < 600;
+    const cardW = isMobile ? (canvas.width - 32) : 400;
+    const cardH = 300;
+    const cardX = (canvas.width - cardW) / 2;
+    const cardY = (canvas.height - cardH) / 2;
+
+    // Left Arrow Click Range
+    const leftArrowXMin = cardX + 10;
+    const leftArrowXMax = cardX + 50;
+    const arrowYMin = cardY + cardH / 2 - 30;
+    const arrowYMax = cardY + cardH / 2 + 30;
+
+    // Right Arrow Click Range
+    const rightArrowXMin = cardX + cardW - 50;
+    const rightArrowXMax = cardX + cardW - 10;
+
+    if (y >= arrowYMin && y <= arrowYMax) {
+      if (x >= leftArrowXMin && x <= leftArrowXMax && activeTipIndex > 0) {
+        const nextIdx = activeTipIndex - 1;
+        setActiveTipIndex(nextIdx);
+        activeTipIndexRef.current = nextIdx;
+        console.log('Canvas Carousel Prev Clicked', nextIdx);
+      } else if (x >= rightArrowXMin && x <= rightArrowXMax && activeTipIndex < tipsData.length - 1) {
+        const nextIdx = activeTipIndex + 1;
+        setActiveTipIndex(nextIdx);
+        activeTipIndexRef.current = nextIdx;
+        console.log('Canvas Carousel Next Clicked', nextIdx);
+      }
+    }
+
+    // Paham Button Click Range (only on last tip)
+    if (activeTipIndex === tipsData.length - 1) {
+      const btnW = 100;
+      const btnH = 32;
+      const btnX = (canvas.width - btnW) / 2;
+      const btnY = cardY + 222;
+
+      if (x >= btnX && x <= btnX + btnW && y >= btnY && y <= btnY + btnH) {
+        console.log('Canvas Carousel Paham Clicked');
+        handleReset();
+      }
+    }
+  };
 
   return (
     <div className="app-container">
@@ -1034,7 +1442,7 @@ export default function App() {
       )}
 
       {/* Main Canvas */}
-      <canvas ref={canvasRef} className="ar-canvas" />
+      <canvas ref={canvasRef} className="ar-canvas" onClick={handleCanvasClick} />
 
       {/* Hidden camera preview */}
       <video
@@ -1057,45 +1465,48 @@ export default function App() {
       )}
 
       {/* Docked Info Box for Surabaya Rain Simulator */}
-      {!isLoading && currentMode === 'simulator' && (simState === 2 || simState === 4 || simState === 6) && (
+      {!isLoading && !isRecording && currentMode === 'simulator' && (simState === 2 || simState === 4 || simState === 6) && (
         <div className={`info-box-stay theme-${simState === 2 ? 'yellow' : simState === 4 ? 'orange' : 'purple'}`}>
           {simState === 2 && (
             <>
-              <h3 className="info-box-stay-title">☁️ Curah Hujan Ringan (ITS Area – Kondisi Aman)</h3>
-              <p className="info-box-stay-body">
-                Gerimis tipis khas Surabaya Timur.<br />
-                Air masih tertampung normal oleh drainase ITS–Keputih.<br />
-                Risiko genangan sangat rendah, aktivitas tetap lancar.
-              </p>
+              <h3 className="info-box-stay-title">☁️ Curah Hujan Ringan</h3>
+              <p className="info-box-stay-subtitle">ITS Area – Kondisi Aman</p>
+              <ul className="info-box-stay-list">
+                <li>Gerimis tipis khas Surabaya Timur.</li>
+                <li>Air masih tertampung normal oleh drainase ITS–Keputih.</li>
+                <li>Risiko genangan sangat rendah, aktivitas tetap lancar.</li>
+              </ul>
             </>
           )}
 
           {simState === 4 && (
             <>
-              <h3 className="info-box-stay-title">🌧️ Curah Hujan Sedang (Waspada Genangan Lokal)</h3>
-              <p className="info-box-stay-body">
-                Hujan mulai stabil dan lebih lama turun.<br />
-                Beberapa titik rendah di sekitar Keputih–Sukolilo bisa tergenang sementara.<br />
-                Drainase mulai bekerja lebih berat, perlu kewaspadaan.
-              </p>
+              <h3 className="info-box-stay-title">🌧️ Curah Hujan Sedang</h3>
+              <p className="info-box-stay-subtitle">Waspada Genangan Lokal</p>
+              <ul className="info-box-stay-list">
+                <li>Hujan mulai stabil dan lebih lama turun.</li>
+                <li>Beberapa titik rendah di sekitar Keputih–Sukolilo bisa tergenang sementara.</li>
+                <li>Drainase mulai bekerja lebih berat, perlu kewaspadaan.</li>
+              </ul>
             </>
           )}
 
           {simState === 6 && (
             <>
-              <h3 className="info-box-stay-title">⛈️ Curah Hujan Deras (Zona Rawan Genangan ITS & Sekitar)</h3>
-              <p className="info-box-stay-body">
-                Hujan lebat dalam durasi panjang.<br />
-                Area Surabaya Timur seperti Keputih, Mulyorejo, dan sekitar ITS berpotensi banjir lokal.<br />
-                Air bisa naik cepat karena kapasitas saluran terbatas dan aliran tersumbat di beberapa titik.
-              </p>
+              <h3 className="info-box-stay-title">⛈️ Curah Hujan Deras</h3>
+              <p className="info-box-stay-subtitle">Zona Rawan Genangan ITS & Sekitar</p>
+              <ul className="info-box-stay-list">
+                <li>Hujan lebat dalam durasi panjang.</li>
+                <li>Area Surabaya Timur seperti Keputih, Mulyorejo, dan sekitar ITS berpotensi banjir lokal.</li>
+                <li>Air bisa naik cepat karena kapasitas saluran terbatas dan aliran tersumbat di beberapa titik.</li>
+              </ul>
             </>
           )}
         </div>
       )}
 
       {/* Centered Popup Checklist Modal for Stage 8 */}
-      {!isLoading && currentMode === 'simulator' && simState === 8 && (
+      {!isLoading && !isRecording && currentMode === 'simulator' && simState === 8 && (
         <div className="info-box-backdrop no-overlay">
           <div className="popup-layout-wrapper">
             <div className="info-box-card">
@@ -1120,6 +1531,16 @@ export default function App() {
                     <div key={index} className="tip-carousel-slide">
                       <img src={tip.image} alt={tip.text} className="tip-slide-img" />
                       <p className="tip-slide-text">{tip.text}</p>
+                      {index === tipsData.length - 1 && (
+                        <>
+                          <span style={{ fontSize: '9px', opacity: 0.6, marginTop: '-8px', marginBottom: '4px' }}>
+                            Klik Paham untuk reset simulator
+                          </span>
+                          <button className="btn-paham" onClick={handleReset}>
+                            Paham
+                          </button>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1158,7 +1579,7 @@ export default function App() {
       )}
 
       {/* Precipitation / Rain Intensity Overlay */}
-      {!isLoading && currentMode === 'simulator' && (
+      {!isLoading && !isRecording && currentMode === 'simulator' && (
         <div className="rain-intensity-overlay">
           🌧️ {simState === 0 ? '0%' :
             simState === 1 ? '15%' :
@@ -1172,7 +1593,7 @@ export default function App() {
       )}
 
       {/* Brand Overlay Title */}
-      {!isLoading && (
+      {!isLoading && !isRecording && (
         <div className="brand-overlay-title">
           🌧️ Surabaya Rain Simulator 🌧️
         </div>
