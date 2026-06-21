@@ -22,6 +22,45 @@ interface ConsoleLogMessage {
   id: string;
 }
 
+interface FloatingItem {
+  type: 'box' | 'trashbag';
+  xPercent: number;
+  size: number;
+  phase: number;
+  rotationOffset: number;
+}
+
+const tipsData = [
+  {
+    image: '/img/tips/reusable_tumbler_bag.png',
+    text: 'Gunakan tumbler dan tote bag reusable',
+  },
+  {
+    image: '/img/tips/minimal_packaging.png',
+    text: 'Pilih produk dengan kemasan minim sampah',
+  },
+  {
+    image: '/img/tips/waste_sorting.png',
+    text: 'Pilah sampah sebelum dibuang',
+  },
+  {
+    image: '/img/tips/dont_litter_sewer.png',
+    text: 'Jangan buang sampah ke selokan',
+  },
+  {
+    image: '/img/tips/conscious_shopping.png',
+    text: 'Kurangi belanja impulsif (overconsumption): Beli seperlunya, bukan karena tren sesaat',
+  },
+  {
+    image: '/img/tips/reuse_items.png',
+    text: 'Pakai kembali barang yang masih layak',
+  },
+  {
+    image: '/img/tips/clean_environment.png',
+    text: 'Ikut menjaga kebersihan lingkungan sekitar',
+  },
+];
+
 export default function App() {
   // --- State Management ---
   const [loadingText, setLoadingText] = useState('Initializing WASM Resolvers...');
@@ -31,10 +70,14 @@ export default function App() {
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
   const [replayModalOpen, setReplayModalOpen] = useState(false);
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLogMessage[]>([]);
+  const currentMode = 'simulator';
+  const [simState, setSimState] = useState<number>(0);
+  const [activeTipIndex, setActiveTipIndex] = useState<number>(0);
 
   // --- Refs ---
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const carouselRef = useRef<HTMLDivElement | null>(null);
 
   const handLandmarkerRef = useRef<HandLandmarker | null>(null);
   const imageSegmenterRef = useRef<ImageSegmenter | null>(null);
@@ -61,6 +104,60 @@ export default function App() {
   const segmentationMaskRef = useRef<Float32Array | null>(null);
   const segmentationWidthRef = useRef<number>(0);
   const segmentationHeightRef = useRef<number>(0);
+
+  // Refs for animation loop performance (to avoid tearing down renderLoop on state change)
+  const currentModeRef = useRef<'shower' | 'simulator' | null>(null);
+  const simStateRef = useRef<number>(0);
+  const floodHeightRef = useRef<number>(0);
+
+  // Preloaded floating items images
+  const imagesRef = useRef<{ box: HTMLImageElement | null; trashbag: HTMLImageElement | null }>({
+    box: null,
+    trashbag: null,
+  });
+
+  // Floating items specifications (increased quantity and sizes)
+  const floatingItemsRef = useRef<FloatingItem[]>([
+    { type: 'box', xPercent: 0.12, size: 55, phase: 0, rotationOffset: 0.1 },
+    { type: 'trashbag', xPercent: 0.24, size: 50, phase: Math.PI * 0.3, rotationOffset: -0.05 },
+    { type: 'box', xPercent: 0.38, size: 62, phase: Math.PI * 0.65, rotationOffset: 0.08 },
+    { type: 'trashbag', xPercent: 0.50, size: 48, phase: Math.PI * 1.1, rotationOffset: -0.12 },
+    { type: 'box', xPercent: 0.62, size: 58, phase: Math.PI * 1.45, rotationOffset: 0.03 },
+    { type: 'trashbag', xPercent: 0.74, size: 52, phase: Math.PI * 0.15, rotationOffset: -0.06 },
+    { type: 'box', xPercent: 0.84, size: 65, phase: Math.PI * 0.85, rotationOffset: 0.05 },
+    { type: 'trashbag', xPercent: 0.94, size: 46, phase: Math.PI * 1.6, rotationOffset: -0.1 },
+  ]);
+
+  // Preload images on mount
+  useEffect(() => {
+    const boxImg = new Image();
+    boxImg.src = '/img/box.png';
+    boxImg.onload = () => {
+      imagesRef.current.box = boxImg;
+      console.log('box.png loaded successfully');
+    };
+
+    const trashImg = new Image();
+    trashImg.src = '/img/trashbag.png';
+    trashImg.onload = () => {
+      imagesRef.current.trashbag = trashImg;
+      console.log('trashbag.png loaded successfully');
+    };
+  }, []);
+
+  useEffect(() => {
+    currentModeRef.current = currentMode;
+  }, [currentMode]);
+
+  useEffect(() => {
+    simStateRef.current = simState;
+  }, [simState]);
+
+  useEffect(() => {
+    if (simState !== 8) {
+      setActiveTipIndex(0);
+    }
+  }, [simState]);
 
   // --- Dynamic Console Logging Hook ---
   useEffect(() => {
@@ -251,15 +348,16 @@ export default function App() {
 
     let lastVideoTime = -1;
 
-    // Handle loadedmetadata resizing
-    const handleLoadedMetadata = () => {
-      if (video.videoWidth && video.videoHeight) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        console.log(`Canvas resized to video dimensions: ${canvas.width}x${canvas.height}`);
-      }
+    // Handle loadedmetadata and window resize
+    const handleResize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      console.log(`Canvas resized to window dimensions: ${canvas.width}x${canvas.height}`);
     };
-    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    window.addEventListener('resize', handleResize);
+    video.addEventListener('loadedmetadata', handleResize);
+    // Initial size setting
+    handleResize();
 
     const renderLoop = () => {
       if (video.readyState >= 2) {
@@ -268,16 +366,35 @@ export default function App() {
         const mirrored = facingMode === 'user';
         const timestamp = video.currentTime * 1000;
 
-        // Render camera frame
+        // Calculate aspect cover cropping parameters
+        const videoWidth = video.videoWidth;
+        const videoHeight = video.videoHeight;
+        const videoRatio = videoWidth / videoHeight;
+        const canvasRatio = canvasWidth / canvasHeight;
+
+        let sx = 0;
+        let sy = 0;
+        let sWidth = videoWidth;
+        let sHeight = videoHeight;
+
+        if (videoRatio > canvasRatio) {
+          sWidth = videoHeight * canvasRatio;
+          sx = (videoWidth - sWidth) / 2;
+        } else {
+          sHeight = videoWidth / canvasRatio;
+          sy = (videoHeight - sHeight) / 2;
+        }
+
+        // Render camera frame matching the cover crop
         ctx.clearRect(0, 0, canvasWidth, canvasHeight);
         if (mirrored) {
           ctx.save();
           ctx.translate(canvasWidth, 0);
           ctx.scale(-1, 1);
-          ctx.drawImage(video, 0, 0, canvasWidth, canvasHeight);
+          ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvasWidth, canvasHeight);
           ctx.restore();
         } else {
-          ctx.drawImage(video, 0, 0, canvasWidth, canvasHeight);
+          ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvasWidth, canvasHeight);
         }
 
         // Process MediaPipe Models
@@ -320,34 +437,32 @@ export default function App() {
           ctx.strokeStyle = '#ffffff';
 
           for (const landmarks of handLandmarksList) {
-            // Find tips of the 5 fingers (indices: 4, 8, 12, 16, 20)
             const tips = [4, 8, 12, 16, 20];
             for (const tipIndex of tips) {
               const landmark = landmarks[tipIndex];
               if (landmark) {
-                const x = (mirrored ? 1 - landmark.x : landmark.x) * canvasWidth;
-                const y = landmark.y * canvasHeight;
+                // Map landmark normalized video coordinates to covered canvas coordinates
+                const normalizedX = mirrored ? 1 - landmark.x : landmark.x;
+                const x = ((normalizedX * videoWidth) - sx) * (canvasWidth / sWidth);
+                const y = ((landmark.y * videoHeight) - sy) * (canvasHeight / sHeight);
 
-                // Draw circles (radius 9, stroke-only)
                 ctx.beginPath();
-                ctx.arc(x, y, 9, 0, Math.PI * 2);
+                ctx.arc(x, y, 22, 0, Math.PI * 2);
                 ctx.stroke();
 
-                // Track closest index finger (tip index 8) to switch handle
                 if (tipIndex === 8) {
-                  const handleX = canvasWidth - 50;
+                  const handleX = canvasWidth - 95;
                   const dx = x - handleX;
                   const dy = y - pullString.handleY;
                   const dist = Math.sqrt(dx * dx + dy * dy);
 
-                  if (dist < 40) {
+                  if (dist < 75) {
                     if (dist < minGrabDist) {
                       minGrabDist = dist;
                       closestHandFinger = { x, y };
                     }
                   } else if (pullString.isGrabbing) {
-                    // Pulling follow threshold
-                    if (Math.abs(dx) < 90 && dy > -50 && dy < 160) {
+                    if (Math.abs(dx) < 180 && dy > -100 && dy < 300) {
                       closestHandFinger = { x, y };
                     }
                   }
@@ -359,53 +474,120 @@ export default function App() {
         }
 
         // Grabbing switch updates
+        const currentModeVal = currentModeRef.current;
+        const simStateVal = simStateRef.current;
+
         if (closestHandFinger) {
           pullString.isGrabbing = true;
           pullString.handleY = Math.max(
             pullString.restY,
-            Math.min(closestHandFinger.y, pullString.restY + 120)
+            Math.min(closestHandFinger.y, pullString.restY + 160)
           );
 
-          if (pullString.handleY - pullString.restY > 65) {
+          if (pullString.handleY - pullString.restY > 90) {
             if (!pullString.hasToggledThisPull) {
-              pullString.stateOn = !pullString.stateOn;
               pullString.hasToggledThisPull = true;
-              console.log(`Switch pulled. Rain state: ${pullString.stateOn ? 'ON' : 'OFF'}`);
+              if (currentModeVal === 'shower') {
+                pullString.stateOn = !pullString.stateOn;
+                console.log(`Switch pulled. Rain state: ${pullString.stateOn ? 'ON' : 'OFF'}`);
+              } else if (currentModeVal === 'simulator') {
+                setSimState((prev) => {
+                  const next = (prev + 1) % 9;
+                  console.log(`Simulator Stage Advanced: ${prev} -> ${next}`);
+                  return next;
+                });
+              }
             }
-          } else if (pullString.handleY - pullString.restY < 40) {
-            // Allow re-toggling within the same drag if returned high
+          } else if (pullString.handleY - pullString.restY < 55) {
             pullString.hasToggledThisPull = false;
           }
         } else {
           pullString.isGrabbing = false;
           pullString.hasToggledThisPull = false;
 
-          // Spring physics formula application
           const force = -pullString.k * (pullString.handleY - pullString.restY);
           pullString.vy += force;
           pullString.vy *= pullString.damping;
           pullString.handleY += pullString.vy;
         }
 
+        // Determine rain parameters based on current mode and state
+        let isRaining = false;
+        let spawnRateBase = 0;
+        let spawnChance = 0;
+        let pSizeMin = 5.0;
+        let pSizeRange = 5.0;
+
+        if (currentModeVal === 'shower') {
+          isRaining = pullString.stateOn;
+          spawnRateBase = 3;
+          spawnChance = 0.125; // average 3.125
+        } else if (currentModeVal === 'simulator') {
+          if (simStateVal === 1 || simStateVal === 2) {
+            isRaining = true;
+            spawnRateBase = 1;
+            spawnChance = 0.5; // average 1.5
+            pSizeMin = 3.0;
+            pSizeRange = 3.0;
+          } else if (simStateVal === 3 || simStateVal === 4) {
+            isRaining = true;
+            spawnRateBase = 3;
+            spawnChance = 0.0; // average 3.0
+            pSizeMin = 5.0;
+            pSizeRange = 4.0;
+          } else if (simStateVal === 5 || simStateVal === 6 || simStateVal === 7) {
+            isRaining = true;
+            spawnRateBase = 6;
+            spawnChance = 0.5; // average 6.5
+            pSizeMin = 7.5;
+            pSizeRange = 5.5;
+          }
+        }
+
         // Spawn Water Particles
-        if (pullString.stateOn) {
-          // Spawn rate: increased by 25% (average 3.125 drops per frame)
-          const spawnCount = Math.random() < 0.875 ? 3 : 4;
+        if (isRaining) {
+          const spawnCount = spawnRateBase + (Math.random() < spawnChance ? 1 : 0);
           for (let i = 0; i < spawnCount; i++) {
             particlesRef.current.push({
               x: Math.random() * canvasWidth,
               y: 0,
               vx: (Math.random() - 0.5) * 1.2,
               vy: Math.random() * 2 + 5,
-              size: Math.random() * 2.5 + 2.5,
+              size: Math.random() * pSizeRange + pSizeMin,
               opacity: Math.random() * 0.4 + 0.5,
             });
+          }
+        }
+
+        // Update flood height
+        if (currentModeVal === 'simulator' && (simStateVal === 5 || simStateVal === 6 || simStateVal === 7)) {
+          const maxFlood = canvasHeight * 0.75;
+          if (floodHeightRef.current < maxFlood) {
+            floodHeightRef.current = Math.min(maxFlood, floodHeightRef.current + 1.2);
+          }
+
+          // Auto-transitions based on screen height percentage
+          if (simStateVal === 5 && floodHeightRef.current >= canvasHeight * 0.45) {
+            simStateRef.current = 6;
+            setSimState(6);
+            console.log('Auto-advanced to Stage 6 (water reached 45% screen height)');
+          } else if (simStateVal === 6 && floodHeightRef.current >= canvasHeight * 0.55) {
+            simStateRef.current = 7;
+            setSimState(7);
+            console.log('Auto-advanced to Stage 7 (water reached 55% screen height)');
+          }
+        } else {
+          if (floodHeightRef.current > 0) {
+            floodHeightRef.current -= 3.0;
+            if (floodHeightRef.current < 0) floodHeightRef.current = 0;
           }
         }
 
         // Update & Render Water Particles
         const currentParticles = particlesRef.current;
         const nextParticles: WaterParticle[] = [];
+        const currentFloodY = canvasHeight - floodHeightRef.current;
+        const waterTimePhase = timestamp ? (timestamp * 0.003) : 0;
 
         ctx.save();
         for (const p of currentParticles) {
@@ -415,77 +597,109 @@ export default function App() {
 
           let alive = true;
 
-          // Check if within bounds for mask check
-          if (p.y >= 0 && p.y < canvasHeight && p.x >= 0 && p.x < canvasWidth) {
-            const px = Math.floor(p.x);
-            const py = Math.floor(p.y);
-            const rawX = mirrored ? canvasWidth - 1 - px : px;
-            const index = py * canvasWidth + rawX;
+          // Check if hitting the flood level (wavy surface)
+          const wave1 = Math.sin(p.x * 0.015 + waterTimePhase) * 3.5;
+          const wave2 = Math.cos(p.x * 0.035 - waterTimePhase * 0.7) * 1.5;
+          const exactFloodY = currentFloodY + wave1 + wave2;
 
-            if (mask && index >= 0 && index < mask.length && mask[index] > 0.5) {
-              const roll = Math.random();
-              if (roll < 0.20) {
-                // 20% Chance: Die on impact + spawn splashes
-                alive = false;
-                const splashCount = Math.floor(Math.random() * 3) + 3;
-                for (let s = 0; s < splashCount; s++) {
-                  splashParticlesRef.current.push({
-                    x: p.x,
-                    y: p.y - 2,
-                    vx: (Math.random() - 0.5) * 3.5,
-                    vy: -Math.random() * 2 - 1.2,
-                    size: p.size * 0.6,
-                    opacity: p.opacity,
-                    life: Math.floor(Math.random() * 8) + 8,
-                  });
-                }
-              } else if (roll < 0.45) {
-                // 25% Chance: Bounce back
-                p.vy = -p.vy * 0.25;
-                p.vx = (Math.random() - 0.5) * 3.5;
-                p.y -= 2; // Offset upward to escape continuous collision
-              } else {
-                // 55% Chance: Slide along silhouette boundary (scanRange = 16)
-                let nearestEdgeX = -1;
-                for (let dx = 1; dx <= 16; dx++) {
-                  const leftX = px - dx;
-                  const rightX = px + dx;
-                  let leftValid = false;
-                  let rightValid = false;
+          if (p.y >= exactFloodY) {
+            alive = false;
+            // Spawn splash on flood surface
+            const splashCount = Math.floor(Math.random() * 2) + 2;
+            for (let s = 0; s < splashCount; s++) {
+              splashParticlesRef.current.push({
+                x: p.x,
+                y: exactFloodY - 2,
+                vx: (Math.random() - 0.5) * 3.0,
+                vy: -Math.random() * 1.5 - 0.8,
+                size: p.size * 0.5,
+                opacity: p.opacity,
+                life: Math.floor(Math.random() * 6) + 6,
+              });
+            }
+          } else if (p.y >= 0 && p.x >= 0 && p.x < canvasWidth) {
+            // Check selfie segmentation mask collision under cover-cropping scale
+            const maskWidth = segmentationWidthRef.current;
+            const maskHeight = segmentationHeightRef.current;
 
-                  if (leftX >= 0) {
-                    const rLX = mirrored ? canvasWidth - 1 - leftX : leftX;
-                    const idxL = py * canvasWidth + rLX;
-                    if (mask[idxL] <= 0.5) leftValid = true;
+            if (mask && maskWidth > 0 && maskHeight > 0) {
+              // Map canvas coordinates to normalized video coordinates
+              const normX = (sx + (p.x / canvasWidth) * sWidth) / videoWidth;
+              const normY = (sy + (p.y / canvasHeight) * sHeight) / videoHeight;
+
+              if (normX >= 0 && normX <= 1 && normY >= 0 && normY <= 1) {
+                const mx = Math.floor(normX * maskWidth);
+                const my = Math.floor(normY * maskHeight);
+                const rawMx = mirrored ? maskWidth - 1 - mx : mx;
+                const maskIndex = my * maskWidth + rawMx;
+
+                if (maskIndex >= 0 && maskIndex < mask.length && mask[maskIndex] > 0.5) {
+                  const roll = Math.random();
+                  if (roll < 0.20) {
+                    // 20% Chance: Die on impact + spawn splashes
+                    alive = false;
+                    const splashCount = Math.floor(Math.random() * 3) + 3;
+                    for (let s = 0; s < splashCount; s++) {
+                      splashParticlesRef.current.push({
+                        x: p.x,
+                        y: p.y - 2,
+                        vx: (Math.random() - 0.5) * 3.5,
+                        vy: -Math.random() * 2 - 1.2,
+                        size: p.size * 0.6,
+                        opacity: p.opacity,
+                        life: Math.floor(Math.random() * 8) + 8,
+                      });
+                    }
+                  } else if (roll < 0.45) {
+                    // 25% Chance: Bounce back
+                    p.vy = -p.vy * 0.25;
+                    p.vx = (Math.random() - 0.5) * 3.5;
+                    p.y -= 2; // Offset upward to escape continuous collision
+                  } else {
+                    // 55% Chance: Slide along silhouette boundary
+                    let nearestEdgeX = -1;
+                    for (let dx = 1; dx <= 6; dx++) {
+                      const leftMx = mx - dx;
+                      const rightMx = mx + dx;
+                      let leftValid = false;
+                      let rightValid = false;
+
+                      if (leftMx >= 0) {
+                        const rLMx = mirrored ? maskWidth - 1 - leftMx : leftMx;
+                        const idxL = my * maskWidth + rLMx;
+                        if (mask[idxL] <= 0.5) leftValid = true;
+                      }
+
+                      if (rightMx < maskWidth) {
+                        const rRMx = mirrored ? maskWidth - 1 - rightMx : rightMx;
+                        const idxR = my * maskWidth + rRMx;
+                        if (mask[idxR] <= 0.5) rightValid = true;
+                      }
+
+                      if (leftValid && rightValid) {
+                        nearestEdgeX = p.vx < 0 ? leftMx : rightMx;
+                        break;
+                      } else if (leftValid) {
+                        nearestEdgeX = leftMx;
+                        break;
+                      } else if (rightValid) {
+                        nearestEdgeX = rightMx;
+                        break;
+                      }
+                    }
+
+                    if (nearestEdgeX !== -1) {
+                      // Map back to canvas coordinates
+                      const canvasNearestEdgeX = ((nearestEdgeX / maskWidth) * videoWidth - sx) * (canvasWidth / sWidth);
+                      p.x = canvasNearestEdgeX;
+                      p.vx = (canvasNearestEdgeX - p.x) * 0.12 + (Math.random() - 0.5) * 0.4;
+                      p.vy = p.vy * 0.35 + 1.2; // Slide down slowly
+                    } else {
+                      // Fall inside with slower velocity
+                      p.vy = 1.8;
+                      p.vx = (Math.random() - 0.5) * 1.5;
+                    }
                   }
-
-                  if (rightX < canvasWidth) {
-                    const rRX = mirrored ? canvasWidth - 1 - rightX : rightX;
-                    const idxR = py * canvasWidth + rRX;
-                    if (mask[idxR] <= 0.5) rightValid = true;
-                  }
-
-                  if (leftValid && rightValid) {
-                    // Match flow velocity direction
-                    nearestEdgeX = p.vx < 0 ? leftX : rightX;
-                    break;
-                  } else if (leftValid) {
-                    nearestEdgeX = leftX;
-                    break;
-                  } else if (rightValid) {
-                    nearestEdgeX = rightX;
-                    break;
-                  }
-                }
-
-                if (nearestEdgeX !== -1) {
-                  p.x = nearestEdgeX;
-                  p.vx = (nearestEdgeX - px) * 0.12 + (Math.random() - 0.5) * 0.4;
-                  p.vy = p.vy * 0.35 + 1.2; // Slide down slowly
-                } else {
-                  // Fall inside with slower velocity
-                  p.vy = 1.8;
-                  p.vx = (Math.random() - 0.5) * 1.5;
                 }
               }
             }
@@ -501,7 +715,7 @@ export default function App() {
 
             // Draw rectangle rain particle (slanted streak)
             ctx.beginPath();
-            ctx.moveTo(p.x - p.vx * 1.2, p.y - p.vy * 1.2);
+            ctx.moveTo(p.x - p.vx * 1.8, p.y - p.vy * 1.8);
             ctx.lineTo(p.x, p.y);
             ctx.strokeStyle = `rgba(255, 255, 255, ${p.opacity * 0.8})`;
             ctx.lineWidth = p.size;
@@ -520,7 +734,12 @@ export default function App() {
           sp.vy += 0.22; // gravity
           sp.life -= 1;
 
-          if (sp.life > 0 && sp.y < canvasHeight && sp.x >= 0 && sp.x < canvasWidth) {
+          const wave1 = Math.sin(sp.x * 0.015 + waterTimePhase) * 3.5;
+          const wave2 = Math.cos(sp.x * 0.035 - waterTimePhase * 0.7) * 1.5;
+          const exactFloodY = currentFloodY + wave1 + wave2;
+
+          // Splash particle should die if it falls below the wavy flood surface
+          if (sp.life > 0 && sp.y < exactFloodY && sp.y < canvasHeight && sp.x >= 0 && sp.x < canvasWidth) {
             nextSplashes.push(sp);
 
             // Draw splash dots
@@ -533,77 +752,142 @@ export default function App() {
         splashParticlesRef.current = nextSplashes;
         ctx.restore();
 
-        // Draw Pull String Switch
-        ctx.save();
-        const switchX = canvasWidth - 50;
-        const rectW = 54;
-        const rectH = 22;
-        const rectX = switchX - rectW / 2;
-        const rectY = pullString.handleY - rectH / 2;
-        const radius = 6;
-
-        // Draw the vertical string line with wiggle effect based on velocity and time
-        ctx.beginPath();
-        const segments = 15;
-        ctx.moveTo(switchX, 0);
-        for (let i = 1; i <= segments; i++) {
-          const t = i / segments;
-          const currY = rectY * t;
-          const envelope = Math.sin(Math.PI * t);
-          const timePhase = timestamp ? (timestamp * 0.02) : 0;
-          // Wiggle amplitude scales with velocity, plus a tiny idle/dragging breeze effect
-          const wiggle = (pullString.vy * 0.4 + (pullString.isGrabbing ? 0.2 : 0.01)) * envelope * Math.sin(t * Math.PI * 3 + timePhase);
-          ctx.lineTo(switchX + wiggle, currY);
-        }
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        // Draw the handle knob as a rounded rectangle with white outline and transparent/white fill
-        ctx.beginPath();
-        if (typeof ctx.roundRect === 'function') {
-          ctx.roundRect(rectX, rectY, rectW, rectH, radius);
-        } else {
-          ctx.moveTo(rectX + radius, rectY);
-          ctx.lineTo(rectX + rectW - radius, rectY);
-          ctx.quadraticCurveTo(rectX + rectW, rectY, rectX + rectW, rectY + radius);
-          ctx.lineTo(rectX + rectW, rectY + rectH - radius);
-          ctx.quadraticCurveTo(rectX + rectW, rectY + rectH, rectX + rectW - radius, rectY + rectH);
-          ctx.lineTo(rectX + radius, rectY + rectH);
-          ctx.quadraticCurveTo(rectX, rectY + rectH, rectX, rectY + rectH - radius);
-          ctx.lineTo(rectX, rectY + radius);
-          ctx.quadraticCurveTo(rectX, rectY, rectX + radius, rectY);
-          ctx.closePath();
-        }
-        if (pullString.isGrabbing) {
-          ctx.fillStyle = '#ffffff';
-          ctx.fill();
-        }
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.8;
-        ctx.stroke();
-
-        // Draw state label inside the rounded rectangle
-        ctx.font = "bold 9px 'JetBrains Mono', monospace";
-        ctx.fillStyle = pullString.isGrabbing ? '#1a1a24' : '#ffffff';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(
-          pullString.stateOn ? 'ON' : 'OFF',
-          switchX,
-          pullString.handleY + 1
-        );
-        ctx.restore();
-
-        // Draw Minimalist REC dot
-        if (isRecording) {
+        // Draw Wavy Flood Water
+        if (floodHeightRef.current > 0) {
           ctx.save();
-          ctx.font = "bold 11px 'JetBrains Mono', monospace";
-          ctx.fillStyle = '#1a1a24';
-          ctx.textAlign = 'left';
-          ctx.fillText('• REC', 24, 32);
+
+          // 1. Draw solid wavy water body
+          ctx.beginPath();
+          ctx.moveTo(0, canvasHeight);
+          for (let x = 0; x <= canvasWidth; x += 5) {
+            const wave1 = Math.sin(x * 0.015 + waterTimePhase) * 3.5;
+            const wave2 = Math.cos(x * 0.035 - waterTimePhase * 0.7) * 1.5;
+            const currY = currentFloodY + wave1 + wave2;
+            ctx.lineTo(x, currY);
+          }
+          ctx.lineTo(canvasWidth, canvasHeight);
+          ctx.closePath();
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+          ctx.fill();
+
+          // 2. Draw thin wave highlight outline on the surface
+          ctx.beginPath();
+          for (let x = 0; x <= canvasWidth; x += 5) {
+            const wave1 = Math.sin(x * 0.015 + waterTimePhase) * 3.5;
+            const wave2 = Math.cos(x * 0.035 - waterTimePhase * 0.7) * 1.5;
+            const currY = currentFloodY + wave1 + wave2;
+            if (x === 0) {
+              ctx.moveTo(x, currY);
+            } else {
+              ctx.lineTo(x, currY);
+            }
+          }
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+
+          // 3. Draw floating items bobbing and riding the waves
+          for (const item of floatingItemsRef.current) {
+            const itemX = item.xPercent * canvasWidth;
+            const wave1 = Math.sin(itemX * 0.015 + waterTimePhase) * 3.5;
+            const wave2 = Math.cos(itemX * 0.035 - waterTimePhase * 0.7) * 1.5;
+            const exactFloodY = currentFloodY + wave1 + wave2;
+
+            // Bobbing movement (minor vertical bounce)
+            const bob = Math.sin(waterTimePhase * 1.2 + item.phase) * 3.0;
+            const floatY = exactFloodY + bob - item.size * 0.3; // align slightly above wave line
+
+            const img = item.type === 'box' ? imagesRef.current.box : imagesRef.current.trashbag;
+            if (img && img.complete) {
+              ctx.save();
+              ctx.translate(itemX, floatY);
+              // Small rotational sway
+              const angle = Math.sin(waterTimePhase * 0.8 + item.phase) * 0.08 + item.rotationOffset;
+              ctx.rotate(angle);
+              ctx.drawImage(img, -item.size / 2, -item.size / 2, item.size, item.size);
+              ctx.restore();
+            }
+          }
+
           ctx.restore();
         }
+
+        // Draw Pull String Switch (only if mode is selected)
+        if (currentModeVal !== null) {
+          ctx.save();
+          const switchX = canvasWidth - 95;
+          const rectW = 120;
+          const rectH = 42;
+          const rectX = switchX - rectW / 2;
+          const rectY = pullString.handleY - rectH / 2;
+          const radius = 12;
+
+          // Draw the vertical string line with wiggle effect based on velocity and time
+          ctx.beginPath();
+          const segments = 15;
+          ctx.moveTo(switchX, 0);
+          for (let i = 1; i <= segments; i++) {
+            const t = i / segments;
+            const currY = rectY * t;
+            const envelope = Math.sin(Math.PI * t);
+            const timePhase = timestamp ? (timestamp * 0.02) : 0;
+            // Wiggle amplitude scales with velocity, plus a tiny idle/dragging breeze effect
+            const wiggle = (pullString.vy * 0.4 + (pullString.isGrabbing ? 0.2 : 0.01)) * envelope * Math.sin(t * Math.PI * 3 + timePhase);
+            ctx.lineTo(switchX + wiggle, currY);
+          }
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          // Draw the handle knob as a rounded rectangle with white outline and transparent/white fill
+          ctx.beginPath();
+          if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(rectX, rectY, rectW, rectH, radius);
+          } else {
+            ctx.moveTo(rectX + radius, rectY);
+            ctx.lineTo(rectX + rectW - radius, rectY);
+            ctx.quadraticCurveTo(rectX + rectW, rectY, rectX + rectW, rectY + radius);
+            ctx.lineTo(rectX + rectW, rectY + rectH - radius);
+            ctx.quadraticCurveTo(rectX + rectW, rectY + rectH, rectX + rectW - radius, rectY + rectH);
+            ctx.lineTo(rectX + radius, rectY + rectH);
+            ctx.quadraticCurveTo(rectX, rectY + rectH, rectX, rectY + rectH - radius);
+            ctx.lineTo(rectX, rectY + radius);
+            ctx.quadraticCurveTo(rectX, rectY, rectX + radius, rectY);
+            ctx.closePath();
+          }
+          if (pullString.isGrabbing) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+          }
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.8;
+          ctx.stroke();
+
+          // Draw state label inside the rounded rectangle
+          ctx.font = "bold 14px 'Montserrat', sans-serif";
+          ctx.fillStyle = pullString.isGrabbing ? '#1a1a24' : '#ffffff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          let knobText = '';
+          if (currentModeVal === 'shower') {
+            knobText = pullString.stateOn ? 'ON' : 'OFF';
+          } else {
+            if (simStateVal === 0) knobText = 'PULL';
+            else if (simStateVal === 7) knobText = 'STOP FLOOD';
+            else if (simStateVal === 8) knobText = 'RESET';
+            else knobText = `STAGE ${simStateVal}`;
+          }
+
+          ctx.fillText(
+            knobText,
+            switchX,
+            pullString.handleY + 1
+          );
+          ctx.restore();
+        }
+
+
       }
 
       animationFrameIdRef.current = requestAnimationFrame(renderLoop);
@@ -613,12 +897,45 @@ export default function App() {
     animationFrameIdRef.current = requestAnimationFrame(renderLoop);
 
     return () => {
-      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      window.removeEventListener('resize', handleResize);
+      video.removeEventListener('loadedmetadata', handleResize);
       if (animationFrameIdRef.current) {
         cancelAnimationFrame(animationFrameIdRef.current);
       }
     };
   }, [isLoading, facingMode, isRecording]);
+
+  const handleCarouselScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    if (container.clientWidth > 0) {
+      const index = Math.round(container.scrollLeft / container.clientWidth);
+      setActiveTipIndex(index);
+    }
+  }, []);
+
+  const scrollPrev = useCallback(() => {
+    const container = carouselRef.current;
+    if (container && container.clientWidth > 0) {
+      const nextIndex = Math.max(0, activeTipIndex - 1);
+      container.scrollTo({
+        left: nextIndex * container.clientWidth,
+        behavior: 'smooth',
+      });
+      setActiveTipIndex(nextIndex);
+    }
+  }, [activeTipIndex]);
+
+  const scrollNext = useCallback(() => {
+    const container = carouselRef.current;
+    if (container && container.clientWidth > 0) {
+      const nextIndex = Math.min(tipsData.length - 1, activeTipIndex + 1);
+      container.scrollTo({
+        left: nextIndex * container.clientWidth,
+        behavior: 'smooth',
+      });
+      setActiveTipIndex(nextIndex);
+    }
+  }, [activeTipIndex]);
 
   // --- Recording controls ---
   const toggleRecording = useCallback(async () => {
@@ -672,10 +989,20 @@ export default function App() {
 
       if (key === 'S') {
         const pullString = pullStringSwitchRef.current;
-        pullString.stateOn = !pullString.stateOn;
         // Trigger bounce animation
-        pullString.handleY = pullString.restY + 70;
-        console.log(`Keyboard toggle! Rain state: ${pullString.stateOn ? 'ON' : 'OFF'}`);
+        pullString.handleY = pullString.restY + 100;
+
+        const mode = currentModeRef.current;
+        if (mode === 'shower') {
+          pullString.stateOn = !pullString.stateOn;
+          console.log(`Keyboard toggle! Rain state: ${pullString.stateOn ? 'ON' : 'OFF'}`);
+        } else if (mode === 'simulator') {
+          setSimState((prev) => {
+            const next = (prev + 1) % 9;
+            console.log(`Keyboard Simulator Stage Advanced: ${prev} -> ${next}`);
+            return next;
+          });
+        }
       } else if (key === 'R') {
         toggleRecording();
       }
@@ -727,17 +1054,136 @@ export default function App() {
         className="raw-video"
       />
 
-
-
-      {/* UI Overlay Controls */}
+      {/* Camera Shutter Record Button */}
       {!isLoading && (
-        <div className="controls-overlay">
-          <button
-            className={`btn-minimal ${isRecording ? 'recording' : ''}`}
-            onClick={toggleRecording}
-          >
-            {isRecording ? 'STOP REC' : 'REC'}
-          </button>
+        <button
+          className={`shutter-btn ${isRecording ? 'recording' : ''}`}
+          onClick={toggleRecording}
+          aria-label={isRecording ? 'Stop Recording' : 'Start Recording'}
+        >
+          <span className="shutter-inner" />
+        </button>
+      )}
+
+      {/* Docked Info Box for Surabaya Rain Simulator */}
+      {!isLoading && currentMode === 'simulator' && (simState === 2 || simState === 4 || simState === 6) && (
+        <div className="info-box-stay">
+          {simState === 2 && (
+            <>
+              <h3 className="info-box-stay-title">☁️ Curah Hujan Ringan (ITS Area – Kondisi Aman)</h3>
+              <p className="info-box-stay-body">
+                Gerimis tipis khas Surabaya Timur.<br />
+                Air masih tertampung normal oleh drainase ITS–Keputih.<br />
+                Risiko genangan sangat rendah, aktivitas tetap lancar.
+              </p>
+            </>
+          )}
+
+          {simState === 4 && (
+            <>
+              <h3 className="info-box-stay-title">🌧️ Curah Hujan Sedang (Waspada Genangan Lokal)</h3>
+              <p className="info-box-stay-body">
+                Hujan mulai stabil dan lebih lama turun.<br />
+                Beberapa titik rendah di sekitar Keputih–Sukolilo bisa tergenang sementara.<br />
+                Drainase mulai bekerja lebih berat, perlu kewaspadaan.
+              </p>
+            </>
+          )}
+
+          {simState === 6 && (
+            <>
+              <h3 className="info-box-stay-title">⛈️ Curah Hujan Deras (Zona Rawan Genangan ITS & Sekitar)</h3>
+              <p className="info-box-stay-body">
+                Hujan lebat dalam durasi panjang.<br />
+                Area Surabaya Timur seperti Keputih, Mulyorejo, dan sekitar ITS berpotensi banjir lokal.<br />
+                Air bisa naik cepat karena kapasitas saluran terbatas dan aliran tersumbat di beberapa titik.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Centered Popup Checklist Modal for Stage 8 */}
+      {!isLoading && currentMode === 'simulator' && simState === 8 && (
+        <div className="info-box-backdrop no-overlay">
+          <div className="popup-layout-wrapper">
+            <div className="info-box-card">
+              <h3 className="info-box-title">Cegah Banjir dari Kebiasaan Sehari-hari</h3>
+              <div className="tips-carousel-container">
+                {/* Left Arrow Button */}
+                <button
+                  className="carousel-arrow left"
+                  onClick={scrollPrev}
+                  aria-label="Previous Tip"
+                  disabled={activeTipIndex === 0}
+                >
+                  ‹
+                </button>
+
+                <div
+                  ref={carouselRef}
+                  className="tips-carousel-scroll"
+                  onScroll={handleCarouselScroll}
+                >
+                  {tipsData.map((tip, index) => (
+                    <div key={index} className="tip-carousel-slide">
+                      <img src={tip.image} alt={tip.text} className="tip-slide-img" />
+                      <p className="tip-slide-text">{tip.text}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Right Arrow Button */}
+                <button
+                  className="carousel-arrow right"
+                  onClick={scrollNext}
+                  aria-label="Next Tip"
+                  disabled={activeTipIndex === tipsData.length - 1}
+                >
+                  ›
+                </button>
+
+                <div className="carousel-dots">
+                  {tipsData.map((_, index) => (
+                    <div
+                      key={index}
+                      className={`carousel-dot ${activeTipIndex === index ? 'active' : ''}`}
+                      onClick={() => {
+                        const container = carouselRef.current;
+                        if (container) {
+                          container.scrollTo({
+                            left: index * container.clientWidth,
+                            behavior: 'smooth',
+                          });
+                        }
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Precipitation / Rain Intensity Overlay */}
+      {!isLoading && currentMode === 'simulator' && (
+        <div className="rain-intensity-overlay">
+          🌧️ {simState === 0 ? '0%' :
+            simState === 1 ? '15%' :
+              simState === 2 ? '30%' :
+                simState === 3 ? '50%' :
+                  simState === 4 ? '65%' :
+                    simState === 5 ? '80%' :
+                      simState === 6 ? '95%' :
+                        simState === 7 ? '100%' : '0%'}
+        </div>
+      )}
+
+      {/* Brand Overlay Title */}
+      {!isLoading && (
+        <div className="brand-overlay-title">
+          🌧️ Surabaya Rain Simulator 🌧️
         </div>
       )}
 
