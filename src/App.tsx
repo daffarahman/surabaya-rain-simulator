@@ -23,7 +23,7 @@ interface ConsoleLogMessage {
 }
 
 interface FloatingItem {
-  type: 'box' | 'trashbag';
+  imageIndex: number;
   xPercent: number;
   size: number;
   phase: number;
@@ -110,39 +110,43 @@ export default function App() {
   const simStateRef = useRef<number>(0);
   const floodHeightRef = useRef<number>(0);
 
-  // Preloaded floating items images
-  const imagesRef = useRef<{ box: HTMLImageElement | null; trashbag: HTMLImageElement | null }>({
-    box: null,
-    trashbag: null,
-  });
+  // Preloaded trash images
+  const trashImagesRef = useRef<HTMLImageElement[]>([]);
 
   // Floating items specifications (increased quantity and sizes)
   const floatingItemsRef = useRef<FloatingItem[]>([
-    { type: 'box', xPercent: 0.12, size: 55, phase: 0, rotationOffset: 0.1 },
-    { type: 'trashbag', xPercent: 0.24, size: 50, phase: Math.PI * 0.3, rotationOffset: -0.05 },
-    { type: 'box', xPercent: 0.38, size: 62, phase: Math.PI * 0.65, rotationOffset: 0.08 },
-    { type: 'trashbag', xPercent: 0.50, size: 48, phase: Math.PI * 1.1, rotationOffset: -0.12 },
-    { type: 'box', xPercent: 0.62, size: 58, phase: Math.PI * 1.45, rotationOffset: 0.03 },
-    { type: 'trashbag', xPercent: 0.74, size: 52, phase: Math.PI * 0.15, rotationOffset: -0.06 },
-    { type: 'box', xPercent: 0.84, size: 65, phase: Math.PI * 0.85, rotationOffset: 0.05 },
-    { type: 'trashbag', xPercent: 0.94, size: 46, phase: Math.PI * 1.6, rotationOffset: -0.1 },
+    { imageIndex: 0, xPercent: 0.10, size: 55, phase: 0, rotationOffset: 0.1 },
+    { imageIndex: 1, xPercent: 0.22, size: 50, phase: Math.PI * 0.3, rotationOffset: -0.05 },
+    { imageIndex: 2, xPercent: 0.32, size: 62, phase: Math.PI * 0.65, rotationOffset: 0.08 },
+    { imageIndex: 3, xPercent: 0.44, size: 48, phase: Math.PI * 1.1, rotationOffset: -0.12 },
+    { imageIndex: 4, xPercent: 0.54, size: 58, phase: Math.PI * 1.45, rotationOffset: 0.03 },
+    { imageIndex: 0, xPercent: 0.64, size: 52, phase: Math.PI * 0.15, rotationOffset: -0.06 },
+    { imageIndex: 1, xPercent: 0.74, size: 65, phase: Math.PI * 0.85, rotationOffset: 0.05 },
+    { imageIndex: 2, xPercent: 0.84, size: 46, phase: Math.PI * 1.6, rotationOffset: -0.1 },
+    { imageIndex: 3, xPercent: 0.92, size: 54, phase: Math.PI * 0.4, rotationOffset: 0.08 },
+    { imageIndex: 4, xPercent: 0.05, size: 49, phase: Math.PI * 1.2, rotationOffset: -0.05 },
   ]);
 
   // Preload images on mount
   useEffect(() => {
-    const boxImg = new Image();
-    boxImg.src = '/img/box.png';
-    boxImg.onload = () => {
-      imagesRef.current.box = boxImg;
-      console.log('box.png loaded successfully');
-    };
+    const loadedImages: HTMLImageElement[] = [];
+    const srcList = [
+      '/img/trashes/1.png',
+      '/img/trashes/2.png',
+      '/img/trashes/3.png',
+      '/img/trashes/4.png',
+      '/img/trashes/5.png',
+    ];
 
-    const trashImg = new Image();
-    trashImg.src = '/img/trashbag.png';
-    trashImg.onload = () => {
-      imagesRef.current.trashbag = trashImg;
-      console.log('trashbag.png loaded successfully');
-    };
+    srcList.forEach((src, idx) => {
+      const img = new Image();
+      img.src = src;
+      img.onload = () => {
+        loadedImages[idx] = img;
+        console.log(`Trash image ${src} loaded successfully`);
+      };
+    });
+    trashImagesRef.current = loadedImages;
   }, []);
 
   useEffect(() => {
@@ -590,6 +594,9 @@ export default function App() {
         const waterTimePhase = timestamp ? (timestamp * 0.003) : 0;
 
         ctx.save();
+        // Setup glowing blue effect for particles
+        ctx.shadowColor = 'rgba(0, 191, 255, 0.8)';
+        ctx.shadowBlur = 8;
         for (const p of currentParticles) {
           p.x += p.vx;
           p.y += p.vy;
@@ -717,7 +724,7 @@ export default function App() {
             ctx.beginPath();
             ctx.moveTo(p.x - p.vx * 1.8, p.y - p.vy * 1.8);
             ctx.lineTo(p.x, p.y);
-            ctx.strokeStyle = `rgba(255, 255, 255, ${p.opacity * 0.8})`;
+            ctx.strokeStyle = `rgba(0, 191, 255, ${p.opacity * 0.95})`;
             ctx.lineWidth = p.size;
             ctx.stroke();
           }
@@ -745,7 +752,7 @@ export default function App() {
             // Draw splash dots
             ctx.beginPath();
             ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(255, 255, 255, ${(sp.life / 16) * 0.7})`;
+            ctx.fillStyle = `rgba(0, 191, 255, ${(sp.life / 16) * 0.8})`;
             ctx.fill();
           }
         }
@@ -767,24 +774,8 @@ export default function App() {
           }
           ctx.lineTo(canvasWidth, canvasHeight);
           ctx.closePath();
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+          ctx.fillStyle = 'rgba(30, 144, 255, 0.35)';
           ctx.fill();
-
-          // 2. Draw thin wave highlight outline on the surface
-          ctx.beginPath();
-          for (let x = 0; x <= canvasWidth; x += 5) {
-            const wave1 = Math.sin(x * 0.015 + waterTimePhase) * 3.5;
-            const wave2 = Math.cos(x * 0.035 - waterTimePhase * 0.7) * 1.5;
-            const currY = currentFloodY + wave1 + wave2;
-            if (x === 0) {
-              ctx.moveTo(x, currY);
-            } else {
-              ctx.lineTo(x, currY);
-            }
-          }
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-          ctx.lineWidth = 1.2;
-          ctx.stroke();
 
           // 3. Draw floating items bobbing and riding the waves
           for (const item of floatingItemsRef.current) {
@@ -797,7 +788,7 @@ export default function App() {
             const bob = Math.sin(waterTimePhase * 1.2 + item.phase) * 3.0;
             const floatY = exactFloodY + bob - item.size * 0.3; // align slightly above wave line
 
-            const img = item.type === 'box' ? imagesRef.current.box : imagesRef.current.trashbag;
+            const img = trashImagesRef.current[item.imageIndex];
             if (img && img.complete) {
               ctx.save();
               ctx.translate(itemX, floatY);
@@ -1067,7 +1058,7 @@ export default function App() {
 
       {/* Docked Info Box for Surabaya Rain Simulator */}
       {!isLoading && currentMode === 'simulator' && (simState === 2 || simState === 4 || simState === 6) && (
-        <div className="info-box-stay">
+        <div className={`info-box-stay theme-${simState === 2 ? 'yellow' : simState === 4 ? 'orange' : 'purple'}`}>
           {simState === 2 && (
             <>
               <h3 className="info-box-stay-title">☁️ Curah Hujan Ringan (ITS Area – Kondisi Aman)</h3>

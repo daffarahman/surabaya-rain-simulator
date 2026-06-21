@@ -443,6 +443,31 @@ body {
   text-align: left;
 }
 
+/* Severity Theme Accents (Borderless) */
+.info-box-stay.theme-yellow {
+  background-color: rgba(255, 250, 215, 0.96);
+  box-shadow: 0 8px 32px rgba(234, 179, 8, 0.15);
+}
+.info-box-stay.theme-yellow .info-box-stay-title {
+  color: #b45309;
+}
+
+.info-box-stay.theme-orange {
+  background-color: rgba(255, 240, 222, 0.96);
+  box-shadow: 0 8px 32px rgba(249, 115, 22, 0.15);
+}
+.info-box-stay.theme-orange .info-box-stay-title {
+  color: #c2410c;
+}
+
+.info-box-stay.theme-purple {
+  background-color: rgba(246, 235, 255, 0.96);
+  box-shadow: 0 8px 32px rgba(168, 85, 247, 0.15);
+}
+.info-box-stay.theme-purple .info-box-stay-title {
+  color: #7e22ce;
+}
+
 .info-box-stay-checklist {
   list-style: none;
   padding: 0;
