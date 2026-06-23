@@ -9,6 +9,7 @@ interface WaterParticle {
   vy: number;
   size: number;
   opacity: number;
+  gravity?: number;
   isSplash?: boolean;
 }
 
@@ -135,19 +136,20 @@ export default function App() {
   // Preloaded tip images for canvas recorder
   const tipImagesRef = useRef<HTMLImageElement[]>([]);
 
-  // Floating items specifications (increased quantity and sizes)
-  const floatingItemsRef = useRef<FloatingItem[]>([
-    { imageIndex: 0, xPercent: 0.10, size: 55, phase: 0, rotationOffset: 0.1 },
-    { imageIndex: 1, xPercent: 0.22, size: 50, phase: Math.PI * 0.3, rotationOffset: -0.05 },
-    { imageIndex: 2, xPercent: 0.32, size: 62, phase: Math.PI * 0.65, rotationOffset: 0.08 },
-    { imageIndex: 3, xPercent: 0.44, size: 48, phase: Math.PI * 1.1, rotationOffset: -0.12 },
-    { imageIndex: 4, xPercent: 0.54, size: 58, phase: Math.PI * 1.45, rotationOffset: 0.03 },
-    { imageIndex: 0, xPercent: 0.64, size: 52, phase: Math.PI * 0.15, rotationOffset: -0.06 },
-    { imageIndex: 1, xPercent: 0.74, size: 65, phase: Math.PI * 0.85, rotationOffset: 0.05 },
-    { imageIndex: 2, xPercent: 0.84, size: 46, phase: Math.PI * 1.6, rotationOffset: -0.1 },
-    { imageIndex: 3, xPercent: 0.92, size: 54, phase: Math.PI * 0.4, rotationOffset: 0.08 },
-    { imageIndex: 4, xPercent: 0.05, size: 49, phase: Math.PI * 1.2, rotationOffset: -0.05 },
-  ]);
+  // Floating items specifications (increased quantity and size variety for more cluttered appearance)
+  const floatingItemsRef = useRef<FloatingItem[]>(
+    Array.from({ length: 32 }, (_, i) => {
+      const basePercent = 0.02 + (i / 31) * 0.96;
+      const jitter = (Math.random() - 0.5) * 0.02;
+      return {
+        imageIndex: i % 5,
+        xPercent: Math.max(0.01, Math.min(0.99, basePercent + jitter)),
+        size: Math.floor(Math.random() * 25) + 38, // sizes between 38 and 63
+        phase: Math.random() * Math.PI * 2,
+        rotationOffset: (Math.random() - 0.5) * 0.4,
+      };
+    })
+  );
 
   // Preload images on mount
   useEffect(() => {
@@ -568,11 +570,19 @@ export default function App() {
         let spawnChance = 0;
         let pSizeMin = 5.0;
         let pSizeRange = 5.0;
+        let speedBase = 5.0;
+        let speedRange = 2.0;
+        let rainGravity = 0.22;
+        let windFactor = 1.2;
 
         if (currentModeVal === 'shower') {
           isRaining = pullString.stateOn;
           spawnRateBase = 3;
           spawnChance = 0.125; // average 3.125
+          speedBase = 8.0;
+          speedRange = 3.0;
+          rainGravity = 0.25;
+          windFactor = 1.2;
         } else if (currentModeVal === 'simulator') {
           if (simStateVal === 1 || simStateVal === 2) {
             isRaining = true;
@@ -580,18 +590,30 @@ export default function App() {
             spawnChance = 0.5; // average 1.5
             pSizeMin = 3.0;
             pSizeRange = 3.0;
+            speedBase = 3.0;     // Drizzle: falls slowly
+            speedRange = 1.5;
+            rainGravity = 0.10;   // Light gravity
+            windFactor = 0.4;    // Almost no wind sway
           } else if (simStateVal === 3 || simStateVal === 4) {
             isRaining = true;
             spawnRateBase = 3;
             spawnChance = 0.0; // average 3.0
             pSizeMin = 5.0;
             pSizeRange = 4.0;
+            speedBase = 13.0;    // Moderate: falls faster
+            speedRange = 4.0;
+            rainGravity = 0.35;   // Normal gravity
+            windFactor = 1.8;    // Moderate sway
           } else if (simStateVal === 5 || simStateVal === 6 || simStateVal === 7) {
             isRaining = true;
             spawnRateBase = 6;
             spawnChance = 0.5; // average 6.5
             pSizeMin = 7.5;
             pSizeRange = 5.5;
+            speedBase = 28.0;    // Heavy: falls very fast
+            speedRange = 7.0;
+            rainGravity = 0.70;   // High gravity
+            windFactor = 4.5;    // Strong wind/sway
           }
         }
 
@@ -599,13 +621,19 @@ export default function App() {
         if (isRaining) {
           const spawnCount = spawnRateBase + (Math.random() < spawnChance ? 1 : 0);
           for (let i = 0; i < spawnCount; i++) {
+            // In heavy stages, let wind blow slanted (add a directional bias to vx)
+            let finalVx = (Math.random() - 0.5) * windFactor;
+            if (currentModeVal === 'simulator' && simStateVal >= 5) {
+              finalVx -= 2.2; // slant rain more to the left to show heavy storm force
+            }
             particlesRef.current.push({
               x: Math.random() * canvasWidth,
               y: 0,
-              vx: (Math.random() - 0.5) * 1.2,
-              vy: Math.random() * 2 + 5,
+              vx: finalVx,
+              vy: Math.random() * speedRange + speedBase,
               size: Math.random() * pSizeRange + pSizeMin,
               opacity: Math.random() * 0.4 + 0.5,
+              gravity: rainGravity,
             });
           }
         }
@@ -613,8 +641,12 @@ export default function App() {
         // Update flood height
         if (currentModeVal === 'simulator' && (simStateVal === 5 || simStateVal === 6 || simStateVal === 7)) {
           const maxFlood = canvasHeight * 0.75;
+          let floodRiseRate = 1.8;
+          if (simStateVal === 6) floodRiseRate = 3.2;
+          else if (simStateVal === 7) floodRiseRate = 5.0;
+
           if (floodHeightRef.current < maxFlood) {
-            floodHeightRef.current = Math.min(maxFlood, floodHeightRef.current + 1.2);
+            floodHeightRef.current = Math.min(maxFlood, floodHeightRef.current + floodRiseRate);
           }
 
           // Auto-transitions based on screen height percentage
@@ -647,7 +679,7 @@ export default function App() {
         for (const p of currentParticles) {
           p.x += p.vx;
           p.y += p.vy;
-          p.vy += 0.22; // gravity force
+          p.vy += p.gravity !== undefined ? p.gravity : 0.22; // gravity force
 
           let alive = true;
 
@@ -668,6 +700,7 @@ export default function App() {
                 vy: -Math.random() * 1.5 - 0.8,
                 size: p.size * 0.5,
                 opacity: p.opacity,
+                gravity: p.gravity,
                 life: Math.floor(Math.random() * 6) + 6,
               });
             }
@@ -701,6 +734,7 @@ export default function App() {
                         vy: -Math.random() * 2 - 1.2,
                         size: p.size * 0.6,
                         opacity: p.opacity,
+                        gravity: p.gravity,
                         life: Math.floor(Math.random() * 8) + 8,
                       });
                     }
@@ -785,7 +819,7 @@ export default function App() {
         for (const sp of currentSplashes) {
           sp.x += sp.vx;
           sp.y += sp.vy;
-          sp.vy += 0.22; // gravity
+          sp.vy += sp.gravity !== undefined ? sp.gravity : 0.22; // gravity
           sp.life -= 1;
 
           const wave1 = Math.sin(sp.x * 0.015 + waterTimePhase) * 3.5;
