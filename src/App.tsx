@@ -50,6 +50,31 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   return lines;
 }
 
+function drawContainImage(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  dx: number,
+  dy: number,
+  dWidth: number,
+  dHeight: number
+) {
+  const imgRatio = img.width / img.height;
+  const destRatio = dWidth / dHeight;
+  let w = dWidth;
+  let h = dHeight;
+  let x = dx;
+  let y = dy;
+
+  if (imgRatio > destRatio) {
+    h = dWidth / imgRatio;
+    y = dy + (dHeight - h) / 2;
+  } else {
+    w = dHeight * imgRatio;
+    x = dx + (dWidth - w) / 2;
+  }
+  ctx.drawImage(img, x, y, w, h);
+}
+
 const tipsData = [
   {
     image: '/img/tips2/1-daurulang.png',
@@ -1131,57 +1156,70 @@ export default function App() {
           // 4. Draw Stage 8 popup carousel modal (center)
           if (currentModeVal === 'simulator' && simStateVal === 8) {
             ctx.save();
-            ctx.fillStyle = 'rgba(26, 26, 36, 0.35)';
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.55)';
             ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
             const cardW = isMobile ? (canvasWidth - 32) : 400;
             const cardH = 380;
             const cardX = (canvasWidth - cardW) / 2;
             const cardY = (canvasHeight - cardH) / 2;
-            ctx.beginPath();
-            ctx.roundRect(cardX, cardY, cardW, cardH, 24);
-            const grad = ctx.createRadialGradient(
-              canvasWidth / 2, cardY + cardH / 2, 20,
-              canvasWidth / 2, cardY + cardH / 2, Math.max(cardW, cardH) / 1.5
-            );
-            grad.addColorStop(0, 'rgba(254, 243, 199, 0.98)');
-            grad.addColorStop(1, 'rgba(255, 255, 255, 0.98)');
-            ctx.fillStyle = grad;
-            ctx.fill();
 
-            ctx.fillStyle = '#b45309';
-            ctx.font = "bold 18px 'Montserrat', sans-serif";
+            // Draw title with glowing shadow
+            ctx.save();
+            ctx.shadowColor = 'rgba(217, 119, 6, 0.8)';
+            ctx.shadowBlur = 12;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 2;
+            ctx.fillStyle = '#fef08a';
+            ctx.font = "bold 22px 'Montserrat', sans-serif";
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
             ctx.fillText('Cegah Banjir dari Kebiasaan Sehari-hari', canvasWidth / 2, cardY + 24);
+            ctx.restore();
 
             const img = tipImagesRef.current[activeTipIndexRef.current];
             const imgSize = 150;
             const imgX = (canvasWidth - imgSize) / 2;
-            const imgY = cardY + 50;
+            const imgY = cardY + 60;
+
             if (img && img.complete) {
-              ctx.drawImage(img, imgX, imgY, imgSize, imgSize);
+              // Draw a subtle translucent background card for the image (like glassmorphism)
+              ctx.save();
+              ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+              ctx.shadowBlur = 10;
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+              ctx.beginPath();
+              ctx.roundRect(imgX - 10, imgY - 10, imgSize + 20, imgSize + 20, 20);
+              ctx.fill();
+              ctx.restore();
+
+              // Draw image inside bounding box preserving aspect ratio (no stretch)
+              ctx.save();
+              drawContainImage(ctx, img, imgX, imgY, imgSize, imgSize);
+              ctx.restore();
             }
 
-            ctx.fillStyle = '#1e293b';
-            ctx.font = "600 11px 'Montserrat', sans-serif";
+            ctx.save();
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+            ctx.shadowBlur = 8;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 2;
+            ctx.fillStyle = '#fffbeb';
+            ctx.font = "bold 15px 'Montserrat', sans-serif";
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
             const tipText = tipsData[activeTipIndexRef.current]?.text || '';
             const tipTextLines = wrapText(ctx, tipText, cardW - 80);
-            let currY = imgY + imgSize + 16;
+            let currY = imgY + imgSize + 20;
             for (const line of tipTextLines) {
               ctx.fillText(line, canvasWidth / 2, currY);
-              currY += 16;
+              currY += 20;
             }
+            ctx.restore();
 
             // Draw "Paham" button if last slide
             if (activeTipIndexRef.current === tipsData.length - 1) {
               ctx.save();
-              ctx.fillStyle = 'rgba(71, 85, 105, 0.6)';
-              ctx.font = "500 9px 'Montserrat', sans-serif";
-              ctx.fillText('Klik Paham untuk reset simulator', canvasWidth / 2, currY + 6);
-
               const btnW = 100;
               const btnH = 32;
               const btnX = (canvasWidth - btnW) / 2;
@@ -1189,34 +1227,40 @@ export default function App() {
 
               ctx.beginPath();
               ctx.roundRect(btnX, btnY, btnW, btnH, 8);
-              ctx.fillStyle = '#1a1a24';
+              ctx.fillStyle = '#3b82f6';
               ctx.fill();
 
               ctx.fillStyle = '#ffffff';
-              ctx.font = "bold 11px 'Montserrat', sans-serif";
+              ctx.font = "bold 13px 'Montserrat', sans-serif";
               ctx.textAlign = 'center';
               ctx.textBaseline = 'middle';
               ctx.fillText('Paham', canvasWidth / 2, btnY + btnH / 2);
               ctx.restore();
             }
 
-            ctx.font = "bold 28px 'Montserrat', sans-serif";
-            ctx.fillStyle = activeTipIndexRef.current === 0 ? 'rgba(180, 83, 9, 0.20)' : '#b45309';
-            ctx.fillText('‹', cardX + 24, cardY + cardH / 2);
+            ctx.save();
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+            ctx.shadowBlur = 8;
+            ctx.font = "bold 34px 'Montserrat', sans-serif";
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = activeTipIndexRef.current === 0 ? 'rgba(254, 240, 138, 0.20)' : '#fef08a';
+            ctx.fillText('‹', cardX + 20, cardY + cardH / 2);
 
-            ctx.fillStyle = activeTipIndexRef.current === tipsData.length - 1 ? 'rgba(180, 83, 9, 0.20)' : '#b45309';
-            ctx.fillText('›', cardX + cardW - 24, cardY + cardH / 2);
+            ctx.fillStyle = activeTipIndexRef.current === tipsData.length - 1 ? 'rgba(254, 240, 138, 0.20)' : '#fef08a';
+            ctx.fillText('›', cardX + cardW - 20, cardY + cardH / 2);
+            ctx.restore();
 
             const dotRadius = 3;
-            const dotGap = 8;
+            const dotGap = 10;
             const dotsTotalW = (tipsData.length - 1) * dotGap;
             const startDotX = (canvasWidth - dotsTotalW) / 2;
-            const dotY = cardY + cardH - 24;
+            const dotY = cardY + cardH - 12;
 
             for (let i = 0; i < tipsData.length; i++) {
               ctx.beginPath();
               ctx.arc(startDotX + i * dotGap, dotY, dotRadius, 0, Math.PI * 2);
-              ctx.fillStyle = activeTipIndexRef.current === i ? '#b45309' : '#e2e8f0';
+              ctx.fillStyle = activeTipIndexRef.current === i ? '#fef08a' : 'rgba(255, 255, 255, 0.3)';
               ctx.fill();
             }
             ctx.restore();
@@ -1570,14 +1614,9 @@ export default function App() {
                       <img src={tip.image} alt={tip.text} className="tip-slide-img" />
                       <p className="tip-slide-text">{tip.text}</p>
                       {index === tipsData.length - 1 && (
-                        <>
-                          <span style={{ fontSize: '9px', opacity: 0.6, marginTop: '-8px', marginBottom: '4px' }}>
-                            Klik Paham untuk reset simulator
-                          </span>
-                          <button className="btn-paham" onClick={handleReset}>
-                            Paham
-                          </button>
-                        </>
+                        <button className="btn-paham" onClick={handleReset}>
+                          Paham
+                        </button>
                       )}
                     </div>
                   ))}

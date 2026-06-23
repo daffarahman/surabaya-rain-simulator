@@ -596,8 +596,9 @@ body {
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(26, 26, 36, 0.35);
-  /* dimmed dark overlay */
+  background-color: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -606,29 +607,30 @@ body {
 }
 
 .info-box-card {
-  background: radial-gradient(circle, rgba(254, 243, 199, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
+  background: transparent;
   border: none;
-  border-radius: 24px;
+  border-radius: 0;
   width: 90%;
   max-width: 440px;
   padding: 28px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  box-shadow: 0 16px 48px rgba(217, 119, 6, 0.15), 0 8px 24px rgba(0, 0, 0, 0.08);
+  box-shadow: none;
   pointer-events: auto;
 }
 
 .info-box-title {
-  font-size: 18px;
-  font-weight: 800;
+  font-size: 24px;
+  font-weight: 900;
   margin: 0;
   line-height: 1.4;
   padding-bottom: 4px;
   text-transform: uppercase;
   text-align: center;
-  color: #b45309;
-  letter-spacing: 0.02em;
+  color: #fef08a;
+  text-shadow: 0 2px 10px rgba(180, 83, 9, 0.8), 0 4px 20px rgba(0, 0, 0, 0.5);
+  letter-spacing: 0.03em;
 }
 
 .info-box-body {
@@ -788,23 +790,25 @@ body {
   object-fit: contain;
   border: none;
   border-radius: 20px;
-  background-color: var(--bg-offset);
+  background-color: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
   padding: 10px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
 
 .tip-slide-text {
-  font-size: 11px;
+  font-size: 16px;
   line-height: 1.6;
-  color: var(--text);
-  font-weight: 600;
+  color: #fffbeb;
+  font-weight: 700;
   text-align: center;
   margin: 0;
   padding: 0 12px;
-  height: 42px;
+  height: auto;
   display: flex;
   align-items: center;
   justify-content: center;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
 }
 
 .carousel-dots {
@@ -820,42 +824,42 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background-color: var(--border-muted);
+  background-color: rgba(255, 255, 255, 0.3);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .carousel-dot.active {
-  background-color: var(--border);
+  background-color: #fef08a;
   transform: scale(1.3);
 }
 
 .carousel-arrow {
   position: absolute;
-  top: calc(50% - 21px);
-  width: 42px;
-  height: 42px;
+  top: calc(50% - 24px);
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
-  background-color: rgba(255, 255, 255, 0.9);
-  color: #b45309;
-  border: 1px solid rgba(251, 191, 36, 0.4);
+  background-color: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(4px);
+  color: #fef08a;
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 26px;
+  font-size: 32px;
   font-weight: bold;
   cursor: pointer;
   z-index: 10;
   transition: all 0.2s ease;
   padding: 0;
   line-height: 1;
-  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.12);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .carousel-arrow:hover:not(:disabled) {
-  background-color: #fef3c7;
-  color: #b45309;
-  border-color: rgba(217, 119, 6, 0.6);
+  background-color: rgba(254, 240, 138, 0.3);
+  color: #ffffff;
 }
 
 .carousel-arrow:disabled {
