@@ -52,32 +52,24 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
 
 const tipsData = [
   {
-    image: '/img/tips/reusable_tumbler_bag.png',
-    text: 'Gunakan tumbler dan tote bag reusable',
+    image: '/img/tips2/1-daurulang.png',
+    text: 'Pilah sampah rumah tangga dan daur ulang materi plastik/kaleng untuk mengurangi tumpukan sampah.',
   },
   {
-    image: '/img/tips/minimal_packaging.png',
-    text: 'Pilih produk dengan kemasan minim sampah',
+    image: '/img/tips2/2-menjaga-lingkungan.png',
+    text: 'Ikut menjaga kebersihan lingkungan bersama warga sekitar agar saluran air bebas sumbatan sampah.',
   },
   {
-    image: '/img/tips/waste_sorting.png',
-    text: 'Pilah sampah sebelum dibuang',
+    image: '/img/tips2/3-tumblr.png',
+    text: 'Kurangi konsumsi botol plastik sekali pakai dengan selalu membawa tumbler/botol minum sendiri.',
   },
   {
-    image: '/img/tips/dont_litter_sewer.png',
-    text: 'Jangan buang sampah ke selokan',
+    image: '/img/tips2/4.png',
+    text: 'Batasi penggunaan kantong belanja plastik sekali pakai untuk menekan limbah kantong kresek.',
   },
   {
-    image: '/img/tips/conscious_shopping.png',
-    text: 'Kurangi belanja impulsif (overconsumption): Beli seperlunya, bukan karena tren sesaat',
-  },
-  {
-    image: '/img/tips/reuse_items.png',
-    text: 'Pakai kembali barang yang masih layak',
-  },
-  {
-    image: '/img/tips/clean_environment.png',
-    text: 'Ikut menjaga kebersihan lingkungan sekitar',
+    image: '/img/tips2/5-overkonsumsi.png',
+    text: 'Gunakan tote bag kain ramah lingkungan untuk belanja dan kurangi kebiasaan belanja berlebih (overconsumption).',
   },
 ];
 
@@ -1143,29 +1135,35 @@ export default function App() {
             ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
             const cardW = isMobile ? (canvasWidth - 32) : 400;
-            const cardH = 300;
+            const cardH = 380;
             const cardX = (canvasWidth - cardW) / 2;
             const cardY = (canvasHeight - cardH) / 2;
             ctx.beginPath();
             ctx.roundRect(cardX, cardY, cardW, cardH, 24);
-            ctx.fillStyle = '#ffffff';
+            const grad = ctx.createRadialGradient(
+              canvasWidth / 2, cardY + cardH / 2, 20,
+              canvasWidth / 2, cardY + cardH / 2, Math.max(cardW, cardH) / 1.5
+            );
+            grad.addColorStop(0, 'rgba(254, 243, 199, 0.98)');
+            grad.addColorStop(1, 'rgba(255, 255, 255, 0.98)');
+            ctx.fillStyle = grad;
             ctx.fill();
 
-            ctx.fillStyle = '#1a1a24';
-            ctx.font = "bold 13px 'Montserrat', sans-serif";
+            ctx.fillStyle = '#b45309';
+            ctx.font = "bold 18px 'Montserrat', sans-serif";
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
             ctx.fillText('Cegah Banjir dari Kebiasaan Sehari-hari', canvasWidth / 2, cardY + 24);
 
             const img = tipImagesRef.current[activeTipIndexRef.current];
-            const imgSize = 80;
+            const imgSize = 150;
             const imgX = (canvasWidth - imgSize) / 2;
-            const imgY = cardY + 54;
+            const imgY = cardY + 50;
             if (img && img.complete) {
               ctx.drawImage(img, imgX, imgY, imgSize, imgSize);
             }
 
-            ctx.fillStyle = '#1a1a24';
+            ctx.fillStyle = '#1e293b';
             ctx.font = "600 11px 'Montserrat', sans-serif";
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
@@ -1180,14 +1178,14 @@ export default function App() {
             // Draw "Paham" button if last slide
             if (activeTipIndexRef.current === tipsData.length - 1) {
               ctx.save();
-              ctx.fillStyle = 'rgba(26, 26, 36, 0.5)';
+              ctx.fillStyle = 'rgba(71, 85, 105, 0.6)';
               ctx.font = "500 9px 'Montserrat', sans-serif";
               ctx.fillText('Klik Paham untuk reset simulator', canvasWidth / 2, currY + 6);
 
               const btnW = 100;
               const btnH = 32;
               const btnX = (canvasWidth - btnW) / 2;
-              const btnY = cardY + 222;
+              const btnY = cardY + 320;
 
               ctx.beginPath();
               ctx.roundRect(btnX, btnY, btnW, btnH, 8);
@@ -1202,11 +1200,11 @@ export default function App() {
               ctx.restore();
             }
 
-            ctx.font = "bold 18px 'Montserrat', sans-serif";
-            ctx.fillStyle = activeTipIndexRef.current === 0 ? 'rgba(26, 26, 36, 0.25)' : '#1a1a24';
+            ctx.font = "bold 28px 'Montserrat', sans-serif";
+            ctx.fillStyle = activeTipIndexRef.current === 0 ? 'rgba(180, 83, 9, 0.20)' : '#b45309';
             ctx.fillText('‹', cardX + 24, cardY + cardH / 2);
 
-            ctx.fillStyle = activeTipIndexRef.current === tipsData.length - 1 ? 'rgba(26, 26, 36, 0.25)' : '#1a1a24';
+            ctx.fillStyle = activeTipIndexRef.current === tipsData.length - 1 ? 'rgba(180, 83, 9, 0.20)' : '#b45309';
             ctx.fillText('›', cardX + cardW - 24, cardY + cardH / 2);
 
             const dotRadius = 3;
@@ -1218,7 +1216,7 @@ export default function App() {
             for (let i = 0; i < tipsData.length; i++) {
               ctx.beginPath();
               ctx.arc(startDotX + i * dotGap, dotY, dotRadius, 0, Math.PI * 2);
-              ctx.fillStyle = activeTipIndexRef.current === i ? '#1a1a24' : '#e5e5e7';
+              ctx.fillStyle = activeTipIndexRef.current === i ? '#b45309' : '#e2e8f0';
               ctx.fill();
             }
             ctx.restore();
@@ -1420,42 +1418,42 @@ export default function App() {
     const x = ((e.clientX - rect.left) / rect.width) * canvas.width;
     const y = ((e.clientY - rect.top) / rect.height) * canvas.height;
 
-    const isMobile = canvas.width < 600;
-    const cardW = isMobile ? (canvas.width - 32) : 400;
-    const cardH = 300;
-    const cardX = (canvas.width - cardW) / 2;
-    const cardY = (canvas.height - cardH) / 2;
-
-    // Left Arrow Click Range
-    const leftArrowXMin = cardX + 10;
-    const leftArrowXMax = cardX + 50;
-    const arrowYMin = cardY + cardH / 2 - 30;
-    const arrowYMax = cardY + cardH / 2 + 30;
-
-    // Right Arrow Click Range
-    const rightArrowXMin = cardX + cardW - 50;
-    const rightArrowXMax = cardX + cardW - 10;
-
-    if (y >= arrowYMin && y <= arrowYMax) {
-      if (x >= leftArrowXMin && x <= leftArrowXMax && activeTipIndex > 0) {
-        const nextIdx = activeTipIndex - 1;
-        setActiveTipIndex(nextIdx);
-        activeTipIndexRef.current = nextIdx;
-        console.log('Canvas Carousel Prev Clicked', nextIdx);
-      } else if (x >= rightArrowXMin && x <= rightArrowXMax && activeTipIndex < tipsData.length - 1) {
-        const nextIdx = activeTipIndex + 1;
-        setActiveTipIndex(nextIdx);
-        activeTipIndexRef.current = nextIdx;
-        console.log('Canvas Carousel Next Clicked', nextIdx);
-      }
-    }
-
-    // Paham Button Click Range (only on last tip)
-    if (activeTipIndex === tipsData.length - 1) {
-      const btnW = 100;
-      const btnH = 32;
-      const btnX = (canvas.width - btnW) / 2;
-      const btnY = cardY + 222;
+     const isMobile = canvas.width < 600;
+     const cardW = isMobile ? (canvas.width - 32) : 400;
+     const cardH = 380;
+     const cardX = (canvas.width - cardW) / 2;
+     const cardY = (canvas.height - cardH) / 2;
+ 
+     // Left Arrow Click Range
+     const leftArrowXMin = cardX + 10;
+     const leftArrowXMax = cardX + 50;
+     const arrowYMin = cardY + cardH / 2 - 30;
+     const arrowYMax = cardY + cardH / 2 + 30;
+ 
+     // Right Arrow Click Range
+     const rightArrowXMin = cardX + cardW - 50;
+     const rightArrowXMax = cardX + cardW - 10;
+ 
+     if (y >= arrowYMin && y <= arrowYMax) {
+       if (x >= leftArrowXMin && x <= leftArrowXMax && activeTipIndex > 0) {
+         const nextIdx = activeTipIndex - 1;
+         setActiveTipIndex(nextIdx);
+         activeTipIndexRef.current = nextIdx;
+         console.log('Canvas Carousel Prev Clicked', nextIdx);
+       } else if (x >= rightArrowXMin && x <= rightArrowXMax && activeTipIndex < tipsData.length - 1) {
+         const nextIdx = activeTipIndex + 1;
+         setActiveTipIndex(nextIdx);
+         activeTipIndexRef.current = nextIdx;
+         console.log('Canvas Carousel Next Clicked', nextIdx);
+       }
+     }
+ 
+     // Paham Button Click Range (only on last tip)
+     if (activeTipIndex === tipsData.length - 1) {
+       const btnW = 100;
+       const btnH = 32;
+       const btnX = (canvas.width - btnW) / 2;
+       const btnY = cardY + 320;
 
       if (x >= btnX && x <= btnX + btnW && y >= btnY && y <= btnY + btnH) {
         console.log('Canvas Carousel Paham Clicked');
